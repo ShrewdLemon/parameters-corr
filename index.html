@@ -2681,60 +2681,102 @@
     function step(i) { if (i === its.length) { if (window.XLSX) build(); else loadScript("vendor/xlsx.full.min.js?v=31e9848e80", build, function () { btn.disabled = false; btn.textContent = "Export failed - retry"; }); return; }
       btn.textContent = "Running " + (i + 1) + " of " + its.length + "…";
       setTimeout(function () { var it = its[i], R = E.tqCat(window.PANEL, it[2], L, skip), K = E.tqPicks(R, it[2]); done.push({ it: it, K: K }); step(i + 1); }, 30); }
-    function build() { var wb = XLSX.utils.book_new(), M = window.AMC || {}, liveTag = L ? L.target + " live" : "live";
-      // rows, widths and the [row, column] cells shown as percentages
-      function sheet(name, rows, widths, pct) { var ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(function (w) { return { wch: w }; });
-        pct.forEach(function (rc) { var a = XLSX.utils.encode_cell({ r: rc[0], c: rc[1] }); if (ws[a] && typeof ws[a].v === "number") ws[a].z = "0.0%"; }); XLSX.utils.book_append_sheet(wb, ws, name); return ws; }
+    function build() { var wb = XLSX.utils.book_new(), M = window.AMC || {}, liveTag = L ? L.target + " live" : "live", QS = o.quarts.slice().sort();
+      // rows, widths and the cells given a number format: [row, column] = 0.0%, [row, column, format] for another one
+      function sheet(name, rows, widths, fmt) { var ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(function (w) { return { wch: w }; });
+        fmt.forEach(function (rc) { var a = XLSX.utils.encode_cell({ r: rc[0], c: rc[1] }); if (ws[a]) ws[a].z = rc[2] || "0.0%"; }); XLSX.utils.book_append_sheet(wb, ws, name); return ws; }
+      // a formula cell holding the value it works out to (shown until Excel recalculates)
+      function F(f, v) { return { t: typeof v === "string" ? "s" : "n", v: v, f: f }; }
+      function A1(r, c) { return XLSX.utils.encode_col(c) + (r + 1); }
+      function str(s) { return "\"" + String(s).replace(/"/g, "\"\"") + "\""; }
       function blank() { return { picks: 0, hits: 0, base: 0, bp: 0, bh: 0, bb: 0 }; }
       function addTo(s, r) { if (r.pick) { s.picks++; s.hits += r.hit; s.base += r.pr; } if (r.inBasket) { s.bp++; s.bh += r.hit; s.bb += r.pr; } }
       function ratio(h, n) { return n ? h / n : ""; }
-      function counts(s) { return [s.picks, s.hits, ratio(s.hits, s.picks), ratio(s.base, s.picks), s.bp, s.bh, ratio(s.bh, s.bp)]; }
       var countHead = ["Picks", "Hits", "Hit ratio", "Random", "Basket picks", "Basket hits", "Basket hit ratio"], countPct = [2, 3, 6];
-      done.forEach(function (x) { var K = x.K; x.rows = K.every.slice(); if (K.live && K.live.rows.every) x.rows = x.rows.concat(K.live.rows.every.map(function (r) { return Object.assign({}, r, { year: liveTag }); })); });
+      done.forEach(function (x) { var K = x.K; x.rows = K.every.slice(); if (K.live && K.live.rows.every) x.rows = x.rows.concat(K.live.rows.every.map(function (r) { return Object.assign({}, r, { year: liveTag }); })); x.last = x.rows.length + 1; });
       var years = [], cats = [];
       done.forEach(function (x) { x.rows.forEach(function (r) { if (typeof r.year === "number" && years.indexOf(r.year) < 0) years.push(r.year); if (cats.indexOf(r.cat) < 0) cats.push(r.cat); }); });
       years.sort(); cats.sort();
       var metaHead = ["Sheet", "Parameters", "Target", "Formula", "AMC filter"], meta = function (x) { return [x.it[0], x.it[3].par, x.it[3].tg, x.it[3].f, x.it[3].amc]; }, nm = metaHead.length;
       function by(x, key) { var g = {}; x.rows.forEach(function (r) { var k = key(r); if (k === null) return; addTo(g[k] = g[k] || blank(), r); }); return g; }
+
+      // The summary sheets are formulas on the run sheets: col(x, "E") = run x's column E, row 2 to its last row.
+      // yc / cc = the year and category criteria as formula text (a cell, or a quoted value); TEST = every test year
+      // (the live year's rows hold text, so ">0" skips them); cc null = every category.
+      function col(x, c) { return "'" + x.it[0].replace(/'/g, "''") + "'!$" + c + "$2:$" + c + "$" + x.last; }
+      function where(x, yc, cc) { return col(x, "A") + "," + yc + (cc ? "," + col(x, "B") + "," + cc : ""); }
+      function nPicks(x, yc, cc) { return "COUNTIFS(" + where(x, yc, cc) + "," + col(x, "E") + ",\"Yes\")"; }
+      function nHits(x, yc, cc) { return "COUNTIFS(" + where(x, yc, cc) + "," + col(x, "E") + ",\"Yes\"," + col(x, "H") + ",\"Hit\")"; }
+      function nBask(x, yc, cc) { return "COUNTIFS(" + where(x, yc, cc) + "," + col(x, "I") + ",\"Yes\")"; }
+      function nBHits(x, yc, cc) { return "COUNTIFS(" + where(x, yc, cc) + "," + col(x, "I") + ",\"Yes\"," + col(x, "H") + ",\"Hit\")"; }
+      function per(h, n) { return "IFERROR(" + h + "/" + n + ",\"\")"; }
+      var TEST = str(">0");
+      // the seven counts of row r from column c0 on
+      function counts(s, x, yc, cc, r, c0) { var P = A1(r, c0), H = A1(r, c0 + 1), BP = A1(r, c0 + 4), BH = A1(r, c0 + 5);
+        return [F(nPicks(x, yc, cc), s.picks), F(nHits(x, yc, cc), s.hits), F(per(H, P), ratio(s.hits, s.picks)),
+          F("IFERROR(AVERAGEIFS(" + col(x, "N") + "," + where(x, yc, cc) + "," + col(x, "E") + ",\"Yes\"),\"\")", ratio(s.base, s.picks)),
+          F(nBask(x, yc, cc), s.bp), F(nBHits(x, yc, cc), s.bh), F(per(BH, BP), ratio(s.bh, s.bp))]; }
       var settings = [["Training (return years)", o.from + "-" + o.to], ["Testing (return years)", o.tFrom + "-" + o.tTo], ["A hit finishes in", qn + " of its category"], ["Picks", "3 when a category has " + o.big + "+ funds, otherwise 2; the basket takes the model portfolio's count per category"],
-        ["Left out", TC_SKIP.join(", ") + (window.NOSEC ? ", Sector and Thematic (page switch)" : "")], ["AMC filter (runs 3 and 4)", ((o.amcOut || []).length ? o.amcOut.join(", ") : "none ticked") + " · removed from testing and live in the years shown; training keeps every fund"], ["Options", (o.se === "classic" ? "Classic OLS" : "Clustered by year") + " standard errors · year effects " + (o.fe ? "on" : "off")]];
+        ["Left out", TC_SKIP.join(", ") + (window.NOSEC ? ", Sector and Thematic (page switch)" : "")], ["AMC filter (runs 3 and 4)", ((o.amcOut || []).length ? o.amcOut.join(", ") : "none ticked") + " · removed from testing and live in the years shown; training keeps every fund"], ["Options", (o.se === "classic" ? "Classic OLS" : "Clustered by year") + " standard errors · year effects " + (o.fe ? "on" : "off")],
+        ["Formulas", "Every number on Summary, Yearwise, Categorywise and Year x Category counts the run sheets (COUNTIFS), and Actual, Result and Random on the run sheets are formulas too, so editing a run sheet updates them all"]];
 
       // 1 Summary: each run overall
-      var sm = [["Iterations · top 2-3 picks per category · absolute and excess return · selected and AR 9 parameters"]].concat(settings).concat([[]]), pct = [], h0 = sm.length;
+      var sm = [["Iterations · top 2-3 picks per category · absolute and excess return · selected and AR 9 parameters"]].concat(settings).concat([[]]), fm = [], h0 = sm.length;
       sm.push(metaHead.concat(["What it is"]).concat(countHead).concat(["p", "Live picks", "Live hits", "Live hit ratio"]));
-      done.forEach(function (x, i) { var K = x.K, T = K.total, LV = K.live, s = blank(); x.rows.forEach(function (r) { if (typeof r.year === "number") addTo(s, r); });
-        sm.push(meta(x).concat([x.it[1]]).concat(counts(s)).concat([isFinite(T.p) ? +T.p.toFixed(4) : "", LV ? LV.picks.picks : "", LV ? LV.picks.hits : "", LV ? ratio(LV.picks.hits, LV.picks.picks) : ""]));
-        countPct.forEach(function (k) { pct.push([h0 + 1 + i, nm + 1 + k]); }); pct.push([h0 + 1 + i, nm + 1 + 7 + 3]); });
-      sm.push([]); sm.push(["Each run's sheet", "One row per fund, every category, every test year and the live year. Shortlist = Yes for the picks. Predicted = the fund's predicted rank in its category that year (1 = best). Actual = the quartile it finished in (Q1 = top). Result = Hit or Miss for the picks. Actual % = excess over the Nifty 50 in a test year, the return so far in the live year."]);
-      sheet("Summary", sm, [30, 16, 10, 10, 10, 70, 8, 8, 10, 10, 12, 12, 14, 8, 10, 10, 12], pct);
+      done.forEach(function (x) { var T = x.K.total, LV = x.K.live, s = blank(), r = sm.length, c0 = nm + 1, lv = str(liveTag), N = col(x, "N");
+        x.rows.forEach(function (w) { if (typeof w.year === "number") addTo(s, w); });
+        // p: the hits against the sum of the picks' chances, z = (hits - sum p) / sqrt(sum p(1-p)), two-sided
+        var base = "SUMIFS(" + N + "," + col(x, "A") + "," + TEST + "," + col(x, "E") + ",\"Yes\")", v = "SUMPRODUCT(ISNUMBER(" + col(x, "A") + ")*(" + col(x, "E") + "=\"Yes\")*" + N + "*(1-" + N + "))";
+        sm.push(meta(x).concat([x.it[1]]).concat(counts(s, x, TEST, null, r, c0)).concat([
+          F("IFERROR(2*(1-NORMSDIST(ABS((" + A1(r, c0 + 1) + "-" + base + ")/SQRT(" + v + ")))),\"\")", isFinite(T.p) ? T.p : ""),
+          F(nPicks(x, lv, null), LV ? LV.picks.picks : 0), F(nHits(x, lv, null), LV ? LV.picks.hits : 0), F(per(A1(r, c0 + 9), A1(r, c0 + 8)), LV ? ratio(LV.picks.hits, LV.picks.picks) : "")]));
+        countPct.forEach(function (k) { fm.push([r, c0 + k]); }); fm.push([r, c0 + 7, "0.0000"], [r, c0 + 10]); });
+      sm.push([]); sm.push(["Each run's sheet", "One row per fund, every category, every test year and the live year. Shortlist = Yes for the picks. Predicted = the fund's predicted rank in its category that year (1 = best). Actual = the quartile it finished in (Q1 = top), from Actual rank and Funds in category. Result = Hit or Miss for the picks and the basket funds. Random = the share of the category's funds that finish in the " + qn + ". Actual % = excess over the Nifty 50 in a test year, the return so far in the live year."]);
+      sheet("Summary", sm, [30, 16, 10, 10, 10, 70, 8, 8, 10, 10, 12, 12, 14, 8, 10, 10, 12], fm);
 
-      // 2 Yearwise: hit ratio by year (picks, then basket), then the counts
-      var yw = [["By year · test years " + years[0] + "-" + years[years.length - 1] + " and the live year"], [], ["Top 2-3 picks: hit ratio by year"]], ycols = years.concat(["All test years", liveTag]); pct = [];
-      function yearMatrix(field) { yw.push(metaHead.concat(ycols)); done.forEach(function (x) { var g = by(x, function (r) { return r.year; }), all = blank(); x.rows.forEach(function (r) { if (typeof r.year === "number") addTo(all, r); });
-        var row = meta(x).concat(ycols.map(function (y) { var s = y === "All test years" ? all : g[y]; return s ? (field === "p" ? ratio(s.hits, s.picks) : ratio(s.bh, s.bp)) : ""; })); yw.push(row); ycols.forEach(function (_, j) { pct.push([yw.length - 1, nm + j]); }); }); }
+      // 2 Yearwise: hit ratio by year (picks, then basket), then the counts; a year column's criterion is its header cell
+      var yw = [["By year · test years " + years[0] + "-" + years[years.length - 1] + " and the live year"], [], ["Top 2-3 picks: hit ratio by year"]], ycols = years.concat(["All test years", liveTag]); fm = [];
+      function yearMatrix(field) { var hr = yw.length; yw.push(metaHead.concat(ycols)); done.forEach(function (x) { var g = by(x, function (r) { return r.year; }), all = blank(), r = yw.length; x.rows.forEach(function (w) { if (typeof w.year === "number") addTo(all, w); });
+        yw.push(meta(x).concat(ycols.map(function (y, j) { var s = y === "All test years" ? all : g[y], yc = y === "All test years" ? TEST : XLSX.utils.encode_col(nm + j) + "$" + (hr + 1);
+          return F(field === "p" ? per(nHits(x, yc, null), nPicks(x, yc, null)) : per(nBHits(x, yc, null), nBask(x, yc, null)), s ? (field === "p" ? ratio(s.hits, s.picks) : ratio(s.bh, s.bp)) : ""); })));
+        ycols.forEach(function (_, j) { fm.push([r, nm + j]); }); }); }
       yearMatrix("p"); yw.push([]); yw.push(["14-fund basket: hit ratio by year"]); yearMatrix("b"); yw.push([]); yw.push(["Counts by year"]); yw.push(metaHead.concat(["Year"]).concat(countHead));
-      done.forEach(function (x) { var g = by(x, function (r) { return r.year; }); ycols.filter(function (y) { return y !== "All test years"; }).forEach(function (y) { if (!g[y]) return; yw.push(meta(x).concat([y]).concat(counts(g[y]))); countPct.forEach(function (k) { pct.push([yw.length - 1, nm + 1 + k]); }); }); });
-      sheet("Yearwise", yw, [30, 16, 10, 10, 10].concat(ycols.map(function () { return 12; })).concat([10, 10, 12, 12, 12, 14]), pct);
+      done.forEach(function (x) { var g = by(x, function (r) { return r.year; }); ycols.filter(function (y) { return y !== "All test years"; }).forEach(function (y) { if (!g[y]) return; var r = yw.length;
+        yw.push(meta(x).concat([y]).concat(counts(g[y], x, "$" + A1(r, nm), null, r, nm + 1))); countPct.forEach(function (k) { fm.push([r, nm + 1 + k]); }); }); });
+      sheet("Yearwise", yw, [30, 16, 10, 10, 10].concat(ycols.map(function () { return 12; })).concat([10, 10, 12, 12, 12, 14]), fm);
 
-      // 3 Categorywise: test years together
-      var cw = [["By category · test years " + years[0] + "-" + years[years.length - 1] + " together"], [], ["Top 2-3 picks: hit ratio by category"]], ccols = cats.concat(["All categories"]); pct = [];
-      function catMatrix(field) { cw.push(metaHead.concat(ccols.map(function (k) { return k === "All categories" ? k : short(k); }))); done.forEach(function (x) { var g = by(x, function (r) { return typeof r.year === "number" ? r.cat : null; }), all = blank(); x.rows.forEach(function (r) { if (typeof r.year === "number") addTo(all, r); });
-        cw.push(meta(x).concat(ccols.map(function (k) { var s = k === "All categories" ? all : g[k]; return s ? (field === "p" ? ratio(s.hits, s.picks) : ratio(s.bh, s.bp)) : ""; }))); ccols.forEach(function (_, j) { pct.push([cw.length - 1, nm + j]); }); }); }
+      // 3 Categorywise: test years together; a category column's criterion is its header cell
+      var cw = [["By category · test years " + years[0] + "-" + years[years.length - 1] + " together"], [], ["Top 2-3 picks: hit ratio by category"]], ccols = cats.concat(["All categories"]); fm = [];
+      function catMatrix(field) { var hr = cw.length; cw.push(metaHead.concat(ccols.map(function (k) { return k === "All categories" ? k : short(k); }))); done.forEach(function (x) { var g = by(x, function (r) { return typeof r.year === "number" ? r.cat : null; }), all = blank(), r = cw.length; x.rows.forEach(function (w) { if (typeof w.year === "number") addTo(all, w); });
+        cw.push(meta(x).concat(ccols.map(function (k, j) { var s = k === "All categories" ? all : g[k], cc = k === "All categories" ? null : XLSX.utils.encode_col(nm + j) + "$" + (hr + 1);
+          return F(field === "p" ? per(nHits(x, TEST, cc), nPicks(x, TEST, cc)) : per(nBHits(x, TEST, cc), nBask(x, TEST, cc)), s ? (field === "p" ? ratio(s.hits, s.picks) : ratio(s.bh, s.bp)) : ""); })));
+        ccols.forEach(function (_, j) { fm.push([r, nm + j]); }); }); }
       catMatrix("p"); cw.push([]); cw.push(["14-fund basket: hit ratio by category"]); catMatrix("b"); cw.push([]); cw.push(["Counts by category"]); cw.push(metaHead.concat(["Category"]).concat(countHead));
-      done.forEach(function (x) { var g = by(x, function (r) { return typeof r.year === "number" ? r.cat : null; }); cats.forEach(function (k) { if (!g[k]) return; cw.push(meta(x).concat([short(k)]).concat(counts(g[k]))); countPct.forEach(function (j) { pct.push([cw.length - 1, nm + 1 + j]); }); }); });
-      sheet("Categorywise", cw, [30, 16, 10, 10, 10].concat(ccols.map(function () { return 13; })), pct);
+      done.forEach(function (x) { var g = by(x, function (r) { return typeof r.year === "number" ? r.cat : null; }); cats.forEach(function (k) { if (!g[k]) return; var r = cw.length;
+        cw.push(meta(x).concat([short(k)]).concat(counts(g[k], x, TEST, "$" + A1(r, nm), r, nm + 1))); countPct.forEach(function (j) { fm.push([r, nm + 1 + j]); }); }); });
+      sheet("Categorywise", cw, [30, 16, 10, 10, 10].concat(ccols.map(function () { return 13; })), fm);
 
-      // 4 Year x Category: every run, year and category
-      var yc = [["By year and category"], [], metaHead.concat(["Year", "Category"]).concat(countHead)]; pct = [];
-      done.forEach(function (x) { var g = by(x, function (r) { return r.year + "|" + r.cat; }); years.concat([liveTag]).forEach(function (y) { cats.forEach(function (k) { var s = g[y + "|" + k]; if (!s) return; yc.push(meta(x).concat([y, short(k)]).concat(counts(s))); countPct.forEach(function (j) { pct.push([yc.length - 1, nm + 2 + j]); }); }); }); });
-      var wsYC = sheet("Year x Category", yc, [30, 16, 10, 10, 10, 12, 16, 8, 8, 10, 10, 12, 12, 14], pct); wsYC["!autofilter"] = { ref: "A3:N" + yc.length };
+      // 4 Year x Category: every run, year and category; criteria = the row's Year and Category cells
+      var yc = [["By year and category"], [], metaHead.concat(["Year", "Category"]).concat(countHead)]; fm = [];
+      done.forEach(function (x) { var g = by(x, function (r) { return r.year + "|" + r.cat; }); years.concat([liveTag]).forEach(function (y) { cats.forEach(function (k) { var s = g[y + "|" + k], r = yc.length; if (!s) return;
+        yc.push(meta(x).concat([y, short(k)]).concat(counts(s, x, "$" + A1(r, nm), "$" + A1(r, nm + 1), r, nm + 2))); countPct.forEach(function (j) { fm.push([r, nm + 2 + j]); }); }); }); });
+      var wsYC = sheet("Year x Category", yc, [30, 16, 10, 10, 10, 12, 16, 8, 8, 10, 10, 12, 12, 14], fm); wsYC["!autofilter"] = { ref: "A3:N" + yc.length };
 
-      // each run: every fund
-      done.forEach(function (x) { var tg = x.it[2].target, rows = [["Year", "Category", "Fund", "AMC", "Shortlist", "Predicted", "Actual", "Result", "In basket", "Predicted " + tg + " %", "Actual %", "Actual rank", "Funds in category"]];
+      // each run: every fund. Actual (quartile) comes from Actual rank and Funds in category with the cut-offs
+      // max(1, round(n/4)), round(n/2), round(3n/4); Result from Shortlist / In basket and Actual; Random = the share of
+      // the year's category that finishes in the chosen quartiles
+      done.forEach(function (x) { var tg = x.it[2].target, rows = [["Year", "Category", "Fund", "AMC", "Shortlist", "Predicted", "Actual", "Result", "In basket", "Predicted " + tg + " %", "Actual %", "Actual rank", "Funds in category", "Random"]], fmt = [];
+        function rng(c) { return "$" + c + "$2:$" + c + "$" + x.last; }
         x.rows.slice().sort(function (a, b) { return String(a.year).localeCompare(String(b.year)) || a.cat.localeCompare(b.cat) || a.rank - b.rank; })
-          .forEach(function (r) { rows.push([r.year, short(r.cat), r.fund, M[r.fund] || "", r.pick ? "Yes" : r.blocked ? "AMC left out" : "", r.rank, "Q" + r.q, r.pick ? (r.hit ? "Hit" : "Miss") : "", r.inBasket ? "Yes" : "", +r.score.toFixed(2), +r.actual.toFixed(2), r.actualRank, r.n]); });
-        var ws = sheet(x.it[0], rows, [22, 16, 44, 20, 9, 9, 7, 7, 9, 12, 10, 10, 10], []); ws["!autofilter"] = { ref: "A1:M" + rows.length }; });
-      XLSX.writeFile(wb, "Iterations_Selected_and_AR9_Q" + o.quarts.slice().sort().join("") + "_L" + o.from + "-" + o.to + "_T" + o.tFrom + "-" + o.tTo + ((o.amcOut || []).length ? "_AMC-" + o.amcOut.join("-").replace(/[^A-Za-z0-9-]+/g, "") : "") + exTag() + ".xlsx");
+          .forEach(function (r) { var n = rows.length + 1;
+            rows.push([r.year, short(r.cat), r.fund, M[r.fund] || "", r.pick ? "Yes" : r.blocked ? "AMC left out" : "", r.rank,
+              F("\"Q\"&IF(L" + n + "<=MAX(1,ROUND(M" + n + "/4,0)),1,IF(L" + n + "<=ROUND(M" + n + "/2,0),2,IF(L" + n + "<=ROUND(3*M" + n + "/4,0),3,4)))", "Q" + r.q),
+              F("IF(OR(E" + n + "=\"Yes\",I" + n + "=\"Yes\"),IF(OR(" + QS.map(function (k) { return "G" + n + "=\"Q" + k + "\""; }).join(",") + "),\"Hit\",\"Miss\"),\"\")", r.pick || r.inBasket ? (r.hit ? "Hit" : "Miss") : ""),
+              r.inBasket ? "Yes" : "", +r.score.toFixed(2), +r.actual.toFixed(2), r.actualRank, r.n,
+              F("(" + QS.map(function (k) { return "COUNTIFS(" + rng("A") + ",A" + n + "," + rng("B") + ",B" + n + "," + rng("G") + ",\"Q" + k + "\")"; }).join("+") + ")/M" + n, r.pr)]);
+            fmt.push([n - 1, 13]); });
+        var ws = sheet(x.it[0], rows, [22, 16, 44, 20, 9, 9, 7, 7, 9, 12, 10, 10, 10, 9], fmt); ws["!autofilter"] = { ref: "A1:N" + rows.length }; });
+      XLSX.writeFile(wb, "Iterations_Selected_and_AR9_Q" + o.quarts.slice().sort().join("") + "_L" + o.from + "-" + o.to + "_T" + o.tFrom + "-" + o.tTo + ((o.amcOut || []).length ? "_" + o.amcOut.length + "_AMCs_out" : "") + exTag() + ".xlsx"); // the AMCs are listed on Summary
       btn.disabled = false; btn.textContent = "Export iterations"; }
     step(0); }
 
