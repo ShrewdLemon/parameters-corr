@@ -74,6 +74,65 @@ direction and the outlier-sensitivity flag.
 | `src/correlation_engine.py` | The single source of every coefficient in the app |
 | `src/filters.py` | Year, scheme and category scoping |
 | `src/exporter.py` | Builds the downloadable workbook |
+| `src/yearwise_summary.py` | Year-wise summary grid, workbook and reconciliation |
+| `build_summary.py` | Writes `Summary_All_Years.xlsx` |
+
+## Year-wise summary
+
+`Parameter data.xlsx` (sheets `Parameter data_Filtered` and `Return data`) feeds a second view,
+**Year-wise summary**, and the file `Summary_All_Years.xlsx`:
+
+```bash
+python3 build_summary.py   # writes Summary_All_Years.xlsx and reconciles it with Summary.xlsx
+```
+
+Sheet `YYYY` pools every parameter year from `YYYY` to the last one in the file and correlates
+each of the 101 parameters with the same fund's next-year return, per fund group -- the grid of
+`Summary.xlsx`. There is one sheet per parameter year, and they're detected from the file, so a
+later export with more years adds sheets automatically. The last sheet is the final parameter year,
+because its next-year return is the latest one available.
+
+Figures follow Excel `CORREL` (pairwise complete, no floor), as the reference does. Funds are
+grouped by the *Final Category* of the working file's `Fund list` sheet, saved to
+`data/fund_categories.csv` (refresh with `python3 build_summary.py --fund-list "Correlation working - 2005.xlsx"`).
+Every group column, `All Funds` included, reproduces `Summary.xlsx` to ~1e-15. `All Funds`
+follows the working file's `All Funds- 2005` sheet, whose parameter formulas stop at row 470 while
+the fund list runs to row 488: the 18 funds below that (UTI Large Cap … WhiteOak) never enter its
+CORREL, so they are left out here as well (`in_all_funds` column of the CSV, read from the file).
+
+The same run writes `Summary_Windows.xlsx` with the fixed windows in `SUMMARY_WINDOWS`.
+**Convention:** a period `YYYY-ZZ` names its last **parameter** year -- `2005-23` pools parameters
+2005-2023 against returns 2006-2024. A window the data cannot cover yet (`2018-25` needs 2025
+parameters and 2026 returns) is skipped and appears once the data exists.
+
+`SUMMARY_EXCLUSION_SHEETS` adds sheets to the all-years workbook that drop whole Final
+Categories from every group, All Funds included. `2005 ex Sector` is sheet `2005` without the 58
+Sector funds (Consumption, Infrastructure, Energy & Power, Service Industry).
+
+`Summary_Ex_Sector.xlsx` (`SUMMARY_EX_SECTOR_SHEETS`) holds the sector-free sheets on their own:
+`2005 ex Sector` (parameters 2005-2024) and `2005-23 ex Sector` (parameters 2005-2023, returns 2006-2024).
+
+`Summary_Updated_Data.xlsx` is built from `Parameter data updated.xlsx` (19-10-2026 export, every
+annualised parameter filled for every year): 2005-24, 2018-24 and 2005-22, each with and without
+Sector funds. Only the funds of `Book3.xlsx` are used, grouped by its Final Category; All Funds
+there includes every listed fund.
+
+`Summary_Dec25.xlsx` is the same six-sheet workbook built from `Parameter data updated-Dec 25.xlsx`
+(calendar years 2005-2024, Book3 funds).
+
+## Correlation page (no Streamlit)
+
+`frontend/index.html` is a standalone black-and-white page: pick the parameter years (the return
+years follow, one year later, and vice versa), optionally exclude Sector funds, search the 101
+parameters, and export the full table to Excel. Correlations are computed in the browser from
+`frontend/data.js`, with the same pairwise Pearson as the workbooks.
+
+```bash
+python3 build_frontend.py      # regenerate frontend/data.js from the latest parameter export
+```
+
+Open `frontend/index.html` in a browser -- no server needed. It uses DEC25_WORKBOOK and the Book3
+funds (the data behind `Summary_Latest_2005-25.xlsx`); the 2026 return is Jan-Sep only.
 
 ## Appearance
 

@@ -115,6 +115,22 @@ border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:500;white-spac
 .fill.negative{{right:50%;background:var(--neg);}}
 .meta{{color:var(--muted);font-size:13px;padding:13px 14px 4px;line-height:1.55;}}
 
+/* ---------- year-wise matrix ---------- */
+.panel.scroll{{max-height:72vh;overflow:auto;}}
+table.matrix{{font-size:13px;}}
+table.matrix th{{text-align:center;white-space:normal;min-width:84px;line-height:1.35;padding:12px 8px;}}
+table.matrix th.lead,table.matrix td.pname{{text-align:left;position:sticky;left:0;z-index:2;
+background:var(--surface);min-width:230px;}}
+table.matrix th.lead{{z-index:3;}}
+table.matrix td{{padding:9px 8px;}}
+table.matrix td.mv{{font-family:var(--mono);text-align:center;white-space:nowrap;
+font-variant-numeric:tabular-nums;color:var(--text);}}
+table.matrix td.mv.thin{{color:var(--quiet);font-style:italic;}}
+table.matrix td.mv.na{{color:var(--quiet);}}
+table.matrix tbody tr:hover td.pname{{background:var(--hover);}}
+.legend{{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin:.2rem 0 .7rem;}}
+.legend i{{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;}}
+
 /* ---------- appearance switch ---------- */
 [data-testid="stButton"]:has(button[kind]) button{{white-space:nowrap;}}
 .switch-hint{{color:var(--quiet);font-size:11px;text-align:right;margin-top:4px;}}

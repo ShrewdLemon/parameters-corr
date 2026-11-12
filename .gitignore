@@ -21,3 +21,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Over GitHub's 100 MB file limit (407 MB) -- kept locally only
+Correlation working - 2005.xlsx
