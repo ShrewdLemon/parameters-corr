@@ -2670,7 +2670,7 @@
   function tcIterList(o) { var E = window.PeriodEngine, amc = o.amcOut || [], amcF = { amcOut: amc, dropFunds: o.dropFunds }, amcTxt = amc.length ? "leaving out AMCs in testing and live: " + amc.join(", ") + " (training keeps every fund)" : "AMC filter, but no AMC is ticked on the page, so the same as without",
       same = { group: E.ALL, combined: true }, diff = { group: E.ALL, combined: false }, none = { amcOut: [], dropFunds: null }, AR9 = E.PREVIOUS.map(function (x) { return x[1]; }), out = [];
     [[null, "", "Selected"], [AR9, "AR9 ", "AR 9 parameters"]].forEach(function (pv) {
-      [["absolute", "Abs", "Absolute"], ["excess", "Exc", "Excess"]].forEach(function (t) { var base = Object.assign({}, o, { target: t[0], vars: pv[0] }), pre = pv[1] + t[1] + " ", what = t[2] + " return · " + (pv[0] ? "the nine AR previous parameters (no selection step)" : "parameters selected in training") + " · ";
+      [["absolute", "Abs", "Absolute return"], ["excess", "Exc", "Excess return"]].forEach(function (t) { var base = Object.assign({}, o, { target: t[0], vars: pv[0] }), pre = pv[1] + t[1] + " ", what = t[2] + " · " + (pv[0] ? "the nine AR previous parameters (no selection step)" : "parameters selected in training") + " · ";
         out.push([pre + "1 Same formula", what + "all categories, same formula (one model on all funds) · no AMC filter", Object.assign({}, base, same, none), { par: pv[2], tg: t[2], f: "Same", amc: "No" }],
           [pre + "2 Diff formula", what + "different categories, different formula (each category its own model) · no AMC filter", Object.assign({}, base, diff, none), { par: pv[2], tg: t[2], f: "Different", amc: "No" }],
           [pre + "3 Same formula + AMC", what + "all categories, same formula · " + amcTxt, Object.assign({}, base, same, amcF), { par: pv[2], tg: t[2], f: "Same", amc: "Yes" }],
@@ -2732,7 +2732,7 @@
           F(nPicks(x, lv, null), LV ? LV.picks.picks : 0), F(nHits(x, lv, null), LV ? LV.picks.hits : 0), F(per(A1(r, c0 + 9), A1(r, c0 + 8)), LV ? ratio(LV.picks.hits, LV.picks.picks) : "")]));
         countPct.forEach(function (k) { fm.push([r, c0 + k]); }); fm.push([r, c0 + 7, "0.0000"], [r, c0 + 10]); });
       sm.push([]); sm.push(["Each run's sheet", "One row per fund, every category, every test year and the live year. Shortlist = Yes for the picks. Predicted = the fund's predicted rank in its category that year (1 = best). Actual = the quartile it finished in (Q1 = top), from Actual rank and Funds in category. Result = Hit or Miss for the picks and the basket funds. Random = the share of the category's funds that finish in the " + qn + ". Actual % = excess over the Nifty 50 in a test year, the return so far in the live year."]);
-      sheet("Summary", sm, [30, 16, 10, 10, 10, 70, 8, 8, 10, 10, 12, 12, 14, 8, 10, 10, 12], fm);
+      sheet("Summary", sm, [30, 16, 15, 10, 10, 70, 8, 8, 10, 10, 12, 12, 14, 8, 10, 10, 12], fm);
 
       // 2 Yearwise: hit ratio by year (picks, then basket), then the counts; a year column's criterion is its header cell
       var yw = [["By year · test years " + years[0] + "-" + years[years.length - 1] + " and the live year"], [], ["Top 2-3 picks: hit ratio by year"]], ycols = years.concat(["All test years", liveTag]); fm = [];
@@ -2743,7 +2743,7 @@
       yearMatrix("p"); yw.push([]); yw.push(["14-fund basket: hit ratio by year"]); yearMatrix("b"); yw.push([]); yw.push(["Counts by year"]); yw.push(metaHead.concat(["Year"]).concat(countHead));
       done.forEach(function (x) { var g = by(x, function (r) { return r.year; }); ycols.filter(function (y) { return y !== "All test years"; }).forEach(function (y) { if (!g[y]) return; var r = yw.length;
         yw.push(meta(x).concat([y]).concat(counts(g[y], x, "$" + A1(r, nm), null, r, nm + 1))); countPct.forEach(function (k) { fm.push([r, nm + 1 + k]); }); }); });
-      sheet("Yearwise", yw, [30, 16, 10, 10, 10].concat(ycols.map(function () { return 12; })).concat([10, 10, 12, 12, 12, 14]), fm);
+      sheet("Yearwise", yw, [30, 16, 15, 10, 10].concat(ycols.map(function () { return 12; })).concat([10, 10, 12, 12, 12, 14]), fm);
 
       // 3 Categorywise: test years together; a category column's criterion is its header cell
       var cw = [["By category · test years " + years[0] + "-" + years[years.length - 1] + " together"], [], ["Top 2-3 picks: hit ratio by category"]], ccols = cats.concat(["All categories"]); fm = [];
@@ -2754,13 +2754,13 @@
       catMatrix("p"); cw.push([]); cw.push(["14-fund basket: hit ratio by category"]); catMatrix("b"); cw.push([]); cw.push(["Counts by category"]); cw.push(metaHead.concat(["Category"]).concat(countHead));
       done.forEach(function (x) { var g = by(x, function (r) { return typeof r.year === "number" ? r.cat : null; }); cats.forEach(function (k) { if (!g[k]) return; var r = cw.length;
         cw.push(meta(x).concat([short(k)]).concat(counts(g[k], x, TEST, "$" + A1(r, nm), r, nm + 1))); countPct.forEach(function (j) { fm.push([r, nm + 1 + j]); }); }); });
-      sheet("Categorywise", cw, [30, 16, 10, 10, 10].concat(ccols.map(function () { return 13; })), fm);
+      sheet("Categorywise", cw, [30, 16, 15, 10, 10].concat(ccols.map(function () { return 13; })), fm);
 
       // 4 Year x Category: every run, year and category; criteria = the row's Year and Category cells
       var yc = [["By year and category"], [], metaHead.concat(["Year", "Category"]).concat(countHead)]; fm = [];
       done.forEach(function (x) { var g = by(x, function (r) { return r.year + "|" + r.cat; }); years.concat([liveTag]).forEach(function (y) { cats.forEach(function (k) { var s = g[y + "|" + k], r = yc.length; if (!s) return;
         yc.push(meta(x).concat([y, short(k)]).concat(counts(s, x, "$" + A1(r, nm), "$" + A1(r, nm + 1), r, nm + 2))); countPct.forEach(function (j) { fm.push([r, nm + 2 + j]); }); }); }); });
-      var wsYC = sheet("Year x Category", yc, [30, 16, 10, 10, 10, 12, 16, 8, 8, 10, 10, 12, 12, 14], fm); wsYC["!autofilter"] = { ref: "A3:N" + yc.length };
+      var wsYC = sheet("Year x Category", yc, [30, 16, 15, 10, 10, 12, 16, 8, 8, 10, 10, 12, 12, 14], fm); wsYC["!autofilter"] = { ref: "A3:N" + yc.length };
 
       // each run: every fund. Actual (quartile) comes from Actual rank and Funds in category with the cut-offs
       // max(1, round(n/4)), round(n/2), round(3n/4); Result from Shortlist / In basket and Actual; Random = the share of
