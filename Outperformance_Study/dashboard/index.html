@@ -2515,6 +2515,11 @@
   // model portfolio; a pick is a hit when it finishes in the chosen quartiles of its category. Value and Contra and Dividend
   // Yield are left out. The nine AR previous parameters run the same test alongside.
   var TC = { tqa: { px: "ca", target: "absolute", res: null }, tqe: { px: "ce", target: "excess", res: null } }, TC_ALL = "__combined", TC_SKIP = ["Value and Contra", "Dividend Yield"];
+  // the AMC x year grid starts with these ticked (2026 = the live year; "all" = every column of the grid)
+  var TC_AMC_OUT = { "360 ONE": [2021, 2022], "Bank of India": [2021, 2022, 2023], "Baroda BNP Paribas": [2021], "Groww": [2021, 2022, 2023, 2024, 2025],
+    "Helios": [2024], "ITI": [2022, 2023], "JM Financial": [2021, 2022, 2023], "LIC": [2021, 2022, 2023], "Mahindra Manulife": [2021],
+    "Navi": [2021, 2022, 2023], "Old Bridge": [2024, 2025, 2026], "PGIM India": [2021], "Quant": [2021], "Quantum": [2021, 2023, 2024, 2025, 2026],
+    "Samco": [2023, 2024, 2025, 2026], "Shriram": "all", "Taurus": "all", "Trust": [2025], "Union": [2021], "WhiteOak": [2021] };
   function tcY(t) { return t === "absolute" ? "next-year fund return, % (excess + the Nifty 50's return that year)" : "next-year excess return over the Nifty 50, %"; }
   function tcLab(cat) { return cat === window.PeriodEngine.ALL ? "All funds" : short(cat); }
   function tcQ(q) { return "Q" + q; }
@@ -2522,7 +2527,7 @@
     box.innerHTML = "<div class=\"card\"><h2>Top picks per category · " + c.target + " return</h2><p class=\"hint\" style=\"margin:0\"><b>1</b> all parameters regressed one at a time on the " + c.target + " return in the training years → <b>2</b> keep the significant ones (p ≤ 0.05, data for 80%+ of fund-years) → <b>3</b> drop any whose correlation with a stronger kept one is above 0.9 → <b>4</b> multiple regression on the rest → <b>5</b> each test year, every category's best 2 or 3 funds by predicted return are its picks (3 for a category with enough funds) → a pick is a <b>hit</b> if it finishes in the top quartile of its category. A <b>14-fund basket</b> takes as many funds from each category as the model portfolio does. Value and Contra and Dividend Yield are left out.</p></div>" +
       "<div class=\"card\"><div class=\"pgrid\"><div class=\"pfield\"><span>Training</span><div class=\"pair\">" + yr("AF") + "to" + yr("AT") + "</div></div><div class=\"pfield\"><span>Testing</span><div class=\"pair\">" + yr("TF") + "to" + yr("TT") + "</div></div>" +
       "<div class=\"pfield\"><span>Funds</span><select id=\"" + px + "Group\" aria-label=\"Funds\"></select></div>" +
-      "<div class=\"pfield\"><span>Leave out AMCs</span><details class=\"amcpick\" id=\"" + px + "Amc\"><summary id=\"" + px + "AmcSum\">None</summary><div class=\"amcbox\"><div class=\"amcbar\"><input type=\"search\" id=\"" + px + "AmcS\" placeholder=\"Search AMCs\" aria-label=\"Search AMCs\"><button type=\"button\" class=\"pbtn\" id=\"" + px + "AmcClear\">Clear</button></div><div class=\"amcgrid\" id=\"" + px + "AmcList\"></div><p class=\"note\" style=\"margin:8px 0 0\">Tick a year to leave that AMC's funds out of that year's testing or live data; All ticks every year of the row. There they are never picked and don't count in the quartiles. Training always keeps every fund. Funds = its funds here. The picks update when you close this list.</p></div></details></div>" +
+      "<div class=\"pfield\"><span>Leave out AMCs</span><details class=\"amcpick\" id=\"" + px + "Amc\"><summary id=\"" + px + "AmcSum\">None</summary><div class=\"amcbox\"><div class=\"amcbar\"><input type=\"search\" id=\"" + px + "AmcS\" placeholder=\"Search AMCs\" aria-label=\"Search AMCs\"><button type=\"button\" class=\"pbtn\" id=\"" + px + "AmcClear\">Clear</button></div><div class=\"amcgrid\" id=\"" + px + "AmcList\"></div><p class=\"note\" style=\"margin:8px 0 0\">Tick a year to leave that AMC's funds out of that year's testing or live data; All ticks every year of the row. There they are never picked and don't count in the quartiles. Training always keeps every fund. Funds = its funds here. It opens with the default list ticked; Clear empties it and reloading the page brings it back. The picks update when you close this list.</p></div></details></div>" +
       "<div class=\"pfield\"><span>3 picks when a category has</span><select id=\"" + px + "Big\" aria-label=\"Funds for 3 picks\">" + [15, 20, 25, 30].map(function (v) { return "<option value=\"" + v + "\"" + (v === 20 ? " selected" : "") + ">" + v + "+ funds, else 2</option>"; }).join("") + "</select></div>" +
       "<div class=\"pfield\"><span>A hit finishes in</span><div class=\"controls\" id=\"" + px + "Q\" style=\"margin:0;min-height:38px\">" + [1, 2, 3, 4].map(function (q) { return "<label><input type=\"checkbox\" value=\"" + q + "\"" + (q === 1 ? " checked" : "") + "> Q" + q + (q === 1 ? " (top)" : q === 4 ? " (bottom)" : "") + "</label>"; }).join("") + "</div></div>" +
       "<div class=\"pgo\"><button type=\"button\" class=\"pbtn main\" id=\"" + px + "Run\">Run</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Export\" disabled>Export to Excel</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Iter\" disabled title=\"Summary, Yearwise, Categorywise and Year x Category sheets, then 16 runs: selected and AR 9 parameters, absolute and excess return, one formula or a formula per category, with and without the AMC filter\">Export iterations</button></div></div>" +
@@ -2553,7 +2558,7 @@
   function tcAmcOut(id) { return tcAmcText(tcAmcSel(id)); }
   function tcDrop(sel) { if (!sel.length || !window.AMC) return null; var M = window.AMC, d = {};
     Object.keys(M).forEach(function (f) { sel.forEach(function (a) { if (M[f] !== a.amc) return; d[f] = d[f] || {}; a.years.forEach(function (y) { d[f][y] = 1; }); }); }); return d; }
-  function tcAmcWire(id) { var c = TC[id], px = c.px, d = $(px + "Amc"), grid = $(px + "AmcList"), P = window.PANEL, last = "", ticks = {};
+  function tcAmcWire(id) { var c = TC[id], px = c.px, d = $(px + "Amc"), grid = $(px + "AmcList"), P = window.PANEL, last = "", ticks = Object.assign({}, TC_AMC_OUT);
     if (!window.AMC) { $(px + "AmcSum").textContent = "Not available"; d.querySelector(".amcbox").innerHTML = "<p class=\"perr\" style=\"margin:0\">Could not load amc.js. Run python build_amc.py.</p>"; return; }
     var skip = TC_SKIP.map(function (k) { return P.categories.indexOf(k); }), seen = {}, n = {};
     P.rows.forEach(function (r) { if (skip.indexOf(r[1]) < 0) seen[P.funds[r[2]]] = 1; });
@@ -2561,10 +2566,11 @@
     var names = Object.keys(n).sort(function (a, b) { return a.localeCompare(b); });
     // the columns: every year of the testing period on the page, then the live year
     function cols() { var L = window.LATEST, ys = []; for (var y = +$(px + "TF").value; y <= +$(px + "TT").value; y++) ys.push(y); if (L && ys.indexOf(L.target) < 0) ys.push(L.target); return ys; }
-    function save() { ticks = {}; tcAmcSel(id).forEach(function (a) { ticks[a.amc] = a.years; }); }
+    // a row with every year ticked is kept as "all", so it stays fully ticked when the testing period changes
+    function save() { ticks = {}; tcAmcSel(id).forEach(function (a) { ticks[a.amc] = a.all ? "all" : a.years; }); }
     function draw() { var ys = cols(), L = window.LATEST;
       grid.innerHTML = "<table class=\"amctab\"><thead><tr><th>AMC</th><th class=\"num\">Funds</th><th>All</th>" + ys.map(function (y) { return "<th>" + y + (L && y === L.target ? "<br><span class=\"muted\">live</span>" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
-        names.map(function (a) { var t = ticks[a] || [], all = t.length && ys.every(function (y) { return t.indexOf(y) >= 0; });
+        names.map(function (a) { var t = ticks[a] === "all" ? ys : ticks[a] || [], all = t.length && ys.every(function (y) { return t.indexOf(y) >= 0; });
           return "<tr data-amc=\"" + esc(a) + "\"><th>" + esc(a) + "</th><td class=\"num muted\">" + n[a] + "</td><td><input type=\"checkbox\" class=\"amcall\" aria-label=\"" + esc(a) + ", every year\"" + (all ? " checked" : "") + "></td>" +
             ys.map(function (y) { return "<td><input type=\"checkbox\" class=\"amcy\" value=\"" + y + "\" aria-label=\"" + esc(a) + ", " + y + "\"" + (t.indexOf(y) >= 0 ? " checked" : "") + "></td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>"; filter(); }
     function filter() { var q = $(px + "AmcS").value.trim().toLowerCase(); Array.prototype.forEach.call(grid.querySelectorAll("tr[data-amc]"), function (tr) { tr.hidden = !!q && tr.getAttribute("data-amc").toLowerCase().indexOf(q) < 0; }); }
