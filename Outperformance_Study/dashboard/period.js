@@ -673,6 +673,29 @@
   // walk-forward: W = { years: [{ year, R }], live: R or null }, where each R = tqCat trained on o.from to the year before
   // that test year (its parameters chosen afresh) and tested on that year only, and live = tqCat trained up to the last
   // return year with the latest values. The picks of every year merged into one tqPicks-shaped result.
+  // the predicted quartile of the fund ranked rank of n in its category (1 = best), with the actual quartile's cut-offs
+  function predQuart(rank, n) { return rank <= topK(n) ? 1 : rank <= Math.round(n / 2) ? 2 : rank <= Math.round(3 * n / 4) ? 3 : 4; }
+  // predicted quartile (rows) against actual quartile (columns) for rows of tqPicks' every, and the picks' 2 x 2:
+  // tp = picked and a hit, fp = picked, missed; fn = not picked but a hit, tn = neither
+  // precision, recall, accuracy and F1 of a 2 x 2, and what picking as many funds at random would give
+  function binMetrics(tp, fp, fn, tn) { var n = tp + fp + fn + tn, p = tp + fp ? tp / (tp + fp) : NaN, r = tp + fn ? tp / (tp + fn) : NaN, rp = n ? (tp + fn) / n : NaN, rr = n ? (tp + fp) / n : NaN;
+    return { p: p, r: r, acc: n ? (tp + tn) / n : NaN, f1: isFinite(p) && isFinite(r) ? (p + r ? 2 * p * r / (p + r) : 0) : NaN, rp: rp, rr: rr, racc: rp * rr + (1 - rp) * (1 - rr), rf1: rp + rr ? 2 * rp * rr / (rp + rr) : NaN }; }
+  function tqConfusion(rows) { var m = [0, 1, 2, 3].map(function () { return [0, 0, 0, 0]; }), o = { m: m, n: 0, tp: 0, fp: 0, fn: 0, tn: 0, btp: 0, bfp: 0, bfn: 0, btn: 0 }, d = 0, w1 = 0;
+    rows.forEach(function (r) { var q = predQuart(r.rank, r.n); m[q - 1][r.q - 1]++; o.n++; if (r.pick) { if (r.hit) o.tp++; else o.fp++; } else if (r.hit) o.fn++; else o.tn++;
+      if (r.inBasket) { if (r.hit) o.btp++; else o.bfp++; } else if (r.hit) o.bfn++; else o.btn++; });
+    for (var i = 0; i < 4; i++) for (var j = 0; j < 4; j++) { if (i === j) d += m[i][j]; if (Math.abs(i - j) <= 1) w1 += m[i][j]; }
+    var r1 = m[0][0] + m[0][1] + m[0][2] + m[0][3], c1 = m[0][0] + m[1][0] + m[2][0] + m[3][0];
+    // predicted and actual quartiles share their cut-offs, so a quartile's row and column totals match (Q1 precision = recall);
+    // bigMiss = predicted Q1 that finished Q4
+    o.exact = o.n ? d / o.n : NaN; o.within1 = o.n ? w1 / o.n : NaN; o.q1prec = r1 ? m[0][0] / r1 : NaN; o.q1rec = c1 ? m[0][0] / c1 : NaN; o.bigMiss = r1 ? m[0][3] / r1 : NaN;
+    o.prec = o.tp + o.fp ? o.tp / (o.tp + o.fp) : NaN; o.rec = o.tp + o.fn ? o.tp / (o.tp + o.fn) : NaN;
+    o.picks = binMetrics(o.tp, o.fp, o.fn, o.tn); o.basket = binMetrics(o.btp, o.bfp, o.bfn, o.btn);
+    // the four quartiles as classes: each one's precision (of its predicted row), recall (of its actual column) and F1, macro-averaged;
+    // random accuracy = the chance a random prediction with the same row totals lands on the diagonal
+    var cls = [0, 1, 2, 3].map(function (k) { var row = m[k][0] + m[k][1] + m[k][2] + m[k][3], col = m[0][k] + m[1][k] + m[2][k] + m[3][k], p = row ? m[k][k] / row : NaN, r = col ? m[k][k] / col : NaN;
+      return { p: p, r: r, f1: isFinite(p) && isFinite(r) ? (p + r ? 2 * p * r / (p + r) : 0) : NaN, row: row, col: col }; }), av = function (k) { return cls.reduce(function (s3, x) { return s3 + x[k]; }, 0) / 4; };
+    o.quart = { cls: cls, p: av("p"), r: av("r"), f1: av("f1"), acc: o.exact, racc: o.n ? cls.reduce(function (s3, x) { return s3 + x.row * x.col; }, 0) / (o.n * o.n) : NaN };
+    return o; }
   function tqWalkPicks(W, o) { var z = function () { return { picks: 0, hits: 0, base: 0, v: 0, pts: 0, ep: 0 }; }, F = ["picks", "hits", "base", "v", "pts", "ep"];
     function add(a, b) { F.forEach(function (k) { a[k] += b[k]; }); }
     var out = { years: [], total: z(), basketTotal: z(), cats: {}, basketCats: {}, picks: [], basket: [], every: [], live: null };
@@ -714,7 +737,7 @@
     if (RA) tqCatSheets(RA, null).forEach(function (sh) { if (sh[0] === "Lines") out.push(["AR_Prev_Lines", sh[1], sh[2]]); });
     return out; }
 
-  var api = { tqPicks: tqPicks, tqWalkPicks: tqWalkPicks, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
+  var api = { tqPicks: tqPicks, tqWalkPicks: tqWalkPicks, tqConfusion: tqConfusion, predQuart: predQuart, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
   root.PeriodEngine = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : this);
