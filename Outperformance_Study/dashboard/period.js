@@ -670,6 +670,18 @@
       var all = run(live, function (f) { return f.score[tg]; }, function () { return 0; }, null);
       out.live = { picks: lt, basket: lb, rows: Lr, next: all, label: R.list.filter(function (x) { return x.pred; })[0].pred.liveLabel, year: R.list.filter(function (x) { return x.pred; })[0].pred.target }; }
     return out; }
+  // walk-forward: W = { years: [{ year, R }], live: R or null }, where each R = tqCat trained on o.from to the year before
+  // that test year (its parameters chosen afresh) and tested on that year only, and live = tqCat trained up to the last
+  // return year with the latest values. The picks of every year merged into one tqPicks-shaped result.
+  function tqWalkPicks(W, o) { var z = function () { return { picks: 0, hits: 0, base: 0, v: 0, pts: 0, ep: 0 }; }, F = ["picks", "hits", "base", "v", "pts", "ep"];
+    function add(a, b) { F.forEach(function (k) { a[k] += b[k]; }); }
+    var out = { years: [], total: z(), basketTotal: z(), cats: {}, basketCats: {}, picks: [], basket: [], every: [], live: null };
+    W.years.forEach(function (w) { var K = tqPicks(w.R, o); out.years = out.years.concat(K.years); add(out.total, K.total); add(out.basketTotal, K.basketTotal);
+      Object.keys(K.cats).forEach(function (c) { add(out.cats[c] = out.cats[c] || z(), K.cats[c]); }); Object.keys(K.basketCats).forEach(function (c) { add(out.basketCats[c] = out.basketCats[c] || z(), K.basketCats[c]); });
+      out.picks = out.picks.concat(K.picks); out.basket = out.basket.concat(K.basket); out.every = out.every.concat(K.every); });
+    [out.total, out.basketTotal].forEach(function (t) { var pz = pooled(t); t.z = pz.z; t.p = pz.p; });
+    if (W.live) out.live = tqPicks(W.live, o).live;
+    return out; }
   function tqPickSheets(K, KA, R, RA, o) { var qn = quartName(o.quarts), F = function (f, v) { return { t: typeof v === "string" ? "s" : "n", v: v, f: f }; }, basket = o.basket || BASKET;
     // scores to one decimal: SF = a formula, SV = a value; pts(c) = the points for the quartile in cell c
     function SF(f, v) { var c = F(f, v); c.z = "0.0"; return c; }
@@ -702,7 +714,7 @@
     if (RA) tqCatSheets(RA, null).forEach(function (sh) { if (sh[0] === "Lines") out.push(["AR_Prev_Lines", sh[1], sh[2]]); });
     return out; }
 
-  var api = { tqPicks: tqPicks, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
+  var api = { tqPicks: tqPicks, tqWalkPicks: tqWalkPicks, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
   root.PeriodEngine = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : this);
