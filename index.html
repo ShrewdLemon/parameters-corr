@@ -534,6 +534,7 @@
 
   <section class="panel" id="p-tqa" role="tabpanel"></section>
   <section class="panel" id="p-tqe" role="tabpanel"></section>
+  <section class="panel" id="p-wf" role="tabpanel"></section>
   <section class="panel" id="p-armp" role="tabpanel"></section>
   <section class="panel" id="p-tq2" role="tabpanel"></section>
 
@@ -837,13 +838,13 @@
   function kpi(label, value, note, accent) { return "<div class=\"card kpi\" style=\"--accent:" + (accent || C.blue) +
     "\"><div class=\"label\">" + esc(label) + "</div><div class=\"value\">" + value + "</div><div class=\"note\">" + note + "</div></div>"; }
 
-  var TABS = [["armp", "AR MP analysis"], ["tqa", "Absolute return"], ["tqe", "Excess return"], ["tq2", "Improved methods"], ["period", "Period test"], ["ind", "Indicator tests"], ["reg", "Linear regression"], ["rt", "Regression test"], ["corr", "Parameter correlation"], ["how", "How it works", 1], ["funds", "Fund analysis"], ["summary", "Summary"], ["category", "Category analysis"], ["testing", "Testing & prediction"], ["previous", "Previous parameters"], ["research", "Research methods"], ["markov", "Markov chain"], ["top3", "Top 3 picks"], ["stats", "Statistical analysis"], ["explorer", "Explorer"], ["method", "Methodology"], ["overview", "Overview", 1], ["parameters", "Parameters", 1], ["categories", "Categories", 1],
+  var TABS = [["armp", "AR MP analysis"], ["tqa", "Absolute return"], ["tqe", "Excess return"], ["wf", "Walk-forward"], ["tq2", "Improved methods"], ["period", "Period test"], ["ind", "Indicator tests"], ["reg", "Linear regression"], ["rt", "Regression test"], ["corr", "Parameter correlation"], ["how", "How it works", 1], ["funds", "Fund analysis"], ["summary", "Summary"], ["category", "Category analysis"], ["testing", "Testing & prediction"], ["previous", "Previous parameters"], ["research", "Research methods"], ["markov", "Markov chain"], ["top3", "Top 3 picks"], ["stats", "Statistical analysis"], ["explorer", "Explorer"], ["method", "Methodology"], ["overview", "Overview", 1], ["parameters", "Parameters", 1], ["categories", "Categories", 1],
               ["backtest", "Backtest", 1], ["outlook", "Outlook " + (m.partialYear + 1), 1],
               ["outlook2", "Outlook " + (m.partialYear + 1) + " · ex Sector & Thematic", 1]];
   // Public build (deploy/): only the main tabs, no hidden earlier analysis at all.
   // Only these tabs are shown; the other analyses stay in the code and the workbooks but are not on the page.
   // the side panel: the excess-return work first, then the top-quartile work, then the earlier analysis
-  var GROUPS = [["Excess return regression", ["period", "ind", "reg", "rt", "corr", "how"]], ["Top quartile prediction", ["tqa", "tqe", "armp"]], ["Earlier analysis", ["testing", "previous", "stats"]]];
+  var GROUPS = [["Excess return regression", ["period", "ind", "reg", "rt", "corr", "how"]], ["Top quartile prediction", ["tqa", "tqe", "wf", "armp"]], ["Earlier analysis", ["testing", "previous", "stats"]]];
   var PUBLIC = true, SHOWN = [].concat.apply([], GROUPS.map(function (g) { return g[1]; }));
   TABS = SHOWN.map(function (k) { return TABS.filter(function (t) { return t[0] === k; })[0]; });
   var drawn = {};
@@ -1952,7 +1953,7 @@
     // on localhost always fetch the current engine and panel (the local server sends no cache rules); deploy versions them by content
     var fresh = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "?t=" + Date.now() : "";
     function panel() { if (window.PANEL) ready(); else loadScript("panel.js?v=f1a3d67e58" + fresh, ready, fail); }
-    if (window.PeriodEngine) panel(); else loadScript("period.js?v=8fe242704f" + fresh, panel, fail); }
+    if (window.PeriodEngine) panel(); else loadScript("period.js?v=abe70100b5" + fresh, panel, fail); }
   function drawPeriod() {
     $("zOut").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\">Loading…</p></div>";
     zReady(function () {
@@ -2514,7 +2515,7 @@
   // the significant parameters picks each category's best 2-3 funds every test year, and a 14-fund basket shaped like the
   // model portfolio; a pick is a hit when it finishes in the chosen quartiles of its category. Value and Contra and Dividend
   // Yield are left out. The nine AR previous parameters run the same test alongside.
-  var TC = { tqa: { px: "ca", target: "absolute", res: null }, tqe: { px: "ce", target: "excess", res: null } }, TC_ALL = "__combined", TC_SKIP = ["Value and Contra", "Dividend Yield"];
+  var TC = { tqa: { px: "ca", target: "absolute", res: null }, tqe: { px: "ce", target: "excess", res: null }, wf: { px: "wf", target: "walk", res: null, walk: 1 } }, TC_ALL = "__combined", TC_SKIP = ["Value and Contra", "Dividend Yield"];
   // the AMC x year grid starts with these ticked (2026 = the live year; "all" = every column of the grid)
   var TC_AMC_OUT = { "360 ONE": [2021, 2022], "Bank of India": [2021, 2022, 2023], "Baroda BNP Paribas": [2021], "Groww": [2021, 2022, 2023, 2024, 2025],
     "Helios": [2024], "ITI": [2022, 2023], "JM Financial": [2021, 2022, 2023], "LIC": [2021, 2022, 2023], "Mahindra Manulife": [2021],
@@ -2523,16 +2524,19 @@
   function tcY(t) { return t === "absolute" ? "next-year fund return, % (excess + the Nifty 50's return that year)" : "next-year excess return over the Nifty 50, %"; }
   function tcLab(cat) { return cat === window.PeriodEngine.ALL ? "All funds" : short(cat); }
   function tcQ(q) { return "Q" + q; }
+  // the fields the top-pick tabs share: AMCs to leave out, the 3-pick rule, the hit quartiles; and the Options
+  function tcFields(px) { return "<div class=\"pfield\"><span>Leave out AMCs</span><details class=\"amcpick\" id=\"" + px + "Amc\"><summary id=\"" + px + "AmcSum\">None</summary><div class=\"amcbox\"><div class=\"amcbar\"><input type=\"search\" id=\"" + px + "AmcS\" placeholder=\"Search AMCs\" aria-label=\"Search AMCs\"><button type=\"button\" class=\"pbtn\" id=\"" + px + "AmcClear\">Clear</button></div><div class=\"amcgrid\" id=\"" + px + "AmcList\"></div><p class=\"note\" style=\"margin:8px 0 0\">Tick a year to leave that AMC's funds out of that year's testing or live data; All ticks every year of the row. There they are never picked and don't count in the quartiles. Training always keeps every fund. Funds = its funds here. It opens with the default list ticked; Clear empties it and reloading the page brings it back. The picks update when you close this list.</p></div></details></div>" +
+      "<div class=\"pfield\"><span>3 picks when a category has</span><select id=\"" + px + "Big\" aria-label=\"Funds for 3 picks\">" + [15, 20, 25, 30].map(function (v) { return "<option value=\"" + v + "\"" + (v === 20 ? " selected" : "") + ">" + v + "+ funds, else 2</option>"; }).join("") + "</select></div>" +
+      "<div class=\"pfield\"><span>A hit finishes in</span><div class=\"controls\" id=\"" + px + "Q\" style=\"margin:0;min-height:38px\">" + [1, 2, 3, 4].map(function (q) { return "<label><input type=\"checkbox\" value=\"" + q + "\"" + (q === 1 ? " checked" : "") + "> Q" + q + (q === 1 ? " (top)" : q === 4 ? " (bottom)" : "") + "</label>"; }).join("") + "</div></div>"; }
+  function tcOptions(px) { return "<details class=\"pmore\"><summary>Options</summary><div class=\"controls\"><label for=\"" + px + "Se\">Standard errors</label><select id=\"" + px + "Se\"><option value=\"cluster\">Clustered by year</option><option value=\"classic\">Classic OLS</option></select><label for=\"" + px + "Fe\">Year effects</label><select id=\"" + px + "Fe\"><option value=\"0\">No</option><option value=\"1\">Yes, compare funds within each year</option></select></div></details>"; }
   function drawTc(id) { var c = TC[id], px = c.px, box = $("p-" + id), yr = function (k) { return "<select id=\"" + px + k + "\" aria-label=\"" + k + "\"></select>"; };
     box.innerHTML = "<div class=\"card\"><h2>Top picks per category · " + c.target + " return</h2><p class=\"hint\" style=\"margin:0\"><b>1</b> all parameters regressed one at a time on the " + c.target + " return in the training years → <b>2</b> keep the significant ones (p ≤ 0.05, data for 80%+ of fund-years) → <b>3</b> drop any whose correlation with a stronger kept one is above 0.9 → <b>4</b> multiple regression on the rest → <b>5</b> each test year, every category's best 2 or 3 funds by predicted return are its picks (3 for a category with enough funds) → a pick is a <b>hit</b> if it finishes in the top quartile of its category. A <b>14-fund basket</b> takes as many funds from each category as the model portfolio does. Value and Contra and Dividend Yield are left out.</p></div>" +
       "<div class=\"card\"><div class=\"pgrid\"><div class=\"pfield\"><span>Training</span><div class=\"pair\">" + yr("AF") + "to" + yr("AT") + "</div></div><div class=\"pfield\"><span>Testing</span><div class=\"pair\">" + yr("TF") + "to" + yr("TT") + "</div></div>" +
       "<div class=\"pfield\"><span>Funds</span><select id=\"" + px + "Group\" aria-label=\"Funds\"></select></div>" +
-      "<div class=\"pfield\"><span>Leave out AMCs</span><details class=\"amcpick\" id=\"" + px + "Amc\"><summary id=\"" + px + "AmcSum\">None</summary><div class=\"amcbox\"><div class=\"amcbar\"><input type=\"search\" id=\"" + px + "AmcS\" placeholder=\"Search AMCs\" aria-label=\"Search AMCs\"><button type=\"button\" class=\"pbtn\" id=\"" + px + "AmcClear\">Clear</button></div><div class=\"amcgrid\" id=\"" + px + "AmcList\"></div><p class=\"note\" style=\"margin:8px 0 0\">Tick a year to leave that AMC's funds out of that year's testing or live data; All ticks every year of the row. There they are never picked and don't count in the quartiles. Training always keeps every fund. Funds = its funds here. It opens with the default list ticked; Clear empties it and reloading the page brings it back. The picks update when you close this list.</p></div></details></div>" +
-      "<div class=\"pfield\"><span>3 picks when a category has</span><select id=\"" + px + "Big\" aria-label=\"Funds for 3 picks\">" + [15, 20, 25, 30].map(function (v) { return "<option value=\"" + v + "\"" + (v === 20 ? " selected" : "") + ">" + v + "+ funds, else 2</option>"; }).join("") + "</select></div>" +
-      "<div class=\"pfield\"><span>A hit finishes in</span><div class=\"controls\" id=\"" + px + "Q\" style=\"margin:0;min-height:38px\">" + [1, 2, 3, 4].map(function (q) { return "<label><input type=\"checkbox\" value=\"" + q + "\"" + (q === 1 ? " checked" : "") + "> Q" + q + (q === 1 ? " (top)" : q === 4 ? " (bottom)" : "") + "</label>"; }).join("") + "</div></div>" +
+      tcFields(px) +
       "<div class=\"pgo\"><button type=\"button\" class=\"pbtn main\" id=\"" + px + "Run\">Run</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Export\" disabled>Export to Excel</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Iter\" disabled title=\"Summary, Yearwise, Categorywise and Year x Category sheets, then 16 runs: selected and AR 9 parameters, absolute and excess return, one formula or a formula per category, with and without the AMC filter\">Export iterations</button></div></div>" +
       "<div class=\"ptime\" id=\"" + px + "Time\" aria-hidden=\"true\"></div><div class=\"pkey\"><span><b style=\"background:var(--blue)\"></b>Training</span><span><b style=\"background:var(--orange)\"></b>Testing</span></div><p class=\"perr\" id=\"" + px + "Err\" hidden></p>" +
-      "<details class=\"pmore\"><summary>Options</summary><div class=\"controls\"><label for=\"" + px + "Se\">Standard errors</label><select id=\"" + px + "Se\"><option value=\"cluster\">Clustered by year</option><option value=\"classic\">Classic OLS</option></select><label for=\"" + px + "Fe\">Year effects</label><select id=\"" + px + "Fe\"><option value=\"0\">No</option><option value=\"1\">Yes, compare funds within each year</option></select></div></details></div>" +
+      tcOptions(px) + "</div>" +
       "<div id=\"" + px + "Out\"><div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\">Loading…</p></div></div>";
     zReady(function () { var E = window.PeriodEngine, yrs = []; for (var y = E.FIRST; y <= E.LAST; y++) yrs.push(y);
       var def = { AF: 2006, AT: 2020, TF: 2021, TT: 2025 };
@@ -2584,7 +2588,7 @@
     $(px + "AmcClear").addEventListener("click", function () { Array.prototype.forEach.call(grid.querySelectorAll("input:checked"), function (x) { x.checked = false; }); sum(); });
     draw(); sum();
     // opening redraws the columns for the testing period now on the page, keeping the ticks; closing re-picks if they changed
-    d.addEventListener("toggle", function () { if (d.open) { save(); draw(); sum(); last = tcAmcOut(id).join("|"); var bx = d.querySelector(".amcbox"); bx.style.left = "0px"; var rb = bx.getBoundingClientRect(), over = rb.right - (document.documentElement.clientWidth - 16); if (over > 0) bx.style.left = -Math.min(over, rb.left - 16) + "px"; $(px + "AmcS").focus(); return; } if (tcAmcOut(id).join("|") !== last && c.res) tcPick(id); });
+    d.addEventListener("toggle", function () { if (d.open) { save(); draw(); sum(); last = tcAmcOut(id).join("|"); var bx = d.querySelector(".amcbox"); bx.style.left = "0px"; var rb = bx.getBoundingClientRect(), over = rb.right - (document.documentElement.clientWidth - 16); if (over > 0) bx.style.left = -Math.min(over, rb.left - 16) + "px"; $(px + "AmcS").focus(); return; } if (tcAmcOut(id).join("|") !== last && c.res) (c.walk ? wfPick : tcPick)(id); });
     if (!window.AMC_CLOSE) { window.AMC_CLOSE = 1; document.addEventListener("click", function (ev) { Array.prototype.forEach.call(document.querySelectorAll("details.amcpick[open]"), function (x) { if (!x.contains(ev.target)) x.open = false; }); }); } }
   function tcCheck(id) { var E = window.PeriodEngine, px = TC[id].px, o = tcOpts(id), msg = "";
     if (o.from > o.to || o.tFrom > o.tTo) msg = "Each period must start before it ends.";
@@ -2686,11 +2690,17 @@
           [pre + "3 Same formula + AMC", what + "all categories, same formula · " + amcTxt, Object.assign({}, base, same, amcF), { par: pv[2], tg: t[2], f: "Same", amc: "Yes" }],
           [pre + "4 Diff formula + AMC", what + "different categories, different formula · " + amcTxt, Object.assign({}, base, diff, amcF), { par: pv[2], tg: t[2], f: "Different", amc: "Yes" }]); }); });
     return out; }
-  function tcIterExport(id) { var c = TC[id], btn = $(c.px + "Iter"), E = window.PeriodEngine, o = tcOpts(id), its = tcIterList(o), L = window.LATEST, skip = window.NOSEC ? EX_CATS : null, done = [], qn = E.quartName(o.quarts);
+  function tcIterExport(id) { var c = TC[id], btn = $(c.px + "Iter"), E = window.PeriodEngine, o = tcOpts(id), its = tcIterList(o), L = window.LATEST, skip = window.NOSEC ? EX_CATS : null, done = [];
     btn.disabled = true;
-    function step(i) { if (i === its.length) { if (window.XLSX) build(); else loadScript("vendor/xlsx.full.min.js?v=31e9848e80", build, function () { btn.disabled = false; btn.textContent = "Export failed - retry"; }); return; }
+    function step(i) { if (i === its.length) { tcIterBook(done, o, null, function (ok) { btn.disabled = false; btn.textContent = ok ? "Export iterations" : "Export failed - retry"; }); return; }
       btn.textContent = "Running " + (i + 1) + " of " + its.length + "…";
       setTimeout(function () { var it = its[i], R = E.tqCat(window.PANEL, it[2], L, skip), K = E.tqPicks(R, it[2]); done.push({ it: it, K: K }); step(i + 1); }, 30); }
+    step(0); }
+  // the iterations workbook from done = [{ it, K }]: formula-linked summaries, then every run's funds. wf = the walk-forward
+  // tab's { fits, keys, ys }: each test year trained up to the year before, and a Training windows sheet; null for one period
+  function tcIterBook(done, o, wf, after) { var E = window.PeriodEngine, L = window.LATEST, qn = E.quartName(o.quarts);
+    if (!window.XLSX) { loadScript("vendor/xlsx.full.min.js?v=31e9848e80", function () { tcIterBook(done, o, wf, after); }, function () { after(false); }); return; }
+    build(); after(true);
     function build() { var wb = XLSX.utils.book_new(), M = window.AMC || {}, liveTag = L ? L.target + " live" : "live", QS = o.quarts.slice().sort();
       // rows, widths and the cells given a number format: [row, column] = 0.0%, [row, column, format] for another one
       function sheet(name, rows, widths, fmt) { var ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(function (w) { return { wch: w }; });
@@ -2736,7 +2746,7 @@
         if (field === "ps") return F(avg(x, "O", yc, cc, "E"), s ? ratio(s.pts, s.picks) : "");
         if (field === "bs") return F(avg(x, "O", yc, cc, "I"), s ? ratio(s.bpts, s.bp) : "");
         return F(field === "p" ? per(nHits(x, yc, cc), nPicks(x, yc, cc)) : per(nBHits(x, yc, cc), nBask(x, yc, cc)), s ? (field === "p" ? ratio(s.hits, s.picks) : ratio(s.bh, s.bp)) : ""); }
-      var settings = [["Training (return years)", o.from + "-" + o.to], ["Testing (return years)", o.tFrom + "-" + o.tTo], ["A hit finishes in", qn + " of its category"], ["Picks", "3 when a category has " + o.big + "+ funds, otherwise 2; the basket takes the model portfolio's count per category"],
+      var settings = [["Training (return years)", wf ? o.from + " to the year before each test year (walk-forward): " + wf.ys.map(function (y) { return y + " trained on " + o.from + "-" + (y - 1); }).join("; ") + (L ? "; " + L.target + " live on " + o.from + "-" + E.LAST : "") + ". Every model chooses its parameters afresh." : o.from + "-" + o.to], ["Testing (return years)", o.tFrom + "-" + o.tTo], ["A hit finishes in", qn + " of its category"], ["Picks", "3 when a category has " + o.big + "+ funds, otherwise 2; the basket takes the model portfolio's count per category"],
         ["Left out", TC_SKIP.join(", ") + (window.NOSEC ? ", Sector and Thematic (page switch)" : "")], ["AMC filter (runs 3 and 4)", ((o.amcOut || []).length ? o.amcOut.join(", ") : "none ticked") + " · removed from testing and live in the years shown; training keeps every fund"], ["Options", (o.se === "classic" ? "Classic OLS" : "Clustered by year") + " standard errors · year effects " + (o.fe ? "on" : "off")],
         ["Formulas", "Every number on Summary, Yearwise, Categorywise and Year x Category counts the run sheets (COUNTIFS / AVERAGEIFS), and Actual, Result, Random, Score and Random score on the run sheets are formulas too, so editing a run sheet updates them all"],
         ["Score points (Q1, Q2, Q3, Q4)", PTS[0], PTS[1], PTS[2], PTS[3]]];
@@ -2744,7 +2754,7 @@
       var ptsRow = settings.length + 1, PT = ["B", "C", "D", "E"].map(function (c) { return "Summary!$" + c + "$" + ptsRow; });
 
       // 1 Summary: each run overall
-      var sm = [["Iterations · top 2-3 picks per category · absolute and excess return · selected and AR 9 parameters"]].concat(settings).concat([[]]), fm = [], h0 = sm.length;
+      var sm = [[(wf ? "Walk-forward iterations" : "Iterations") + " · top 2-3 picks per category · absolute and excess return · selected and AR 9 parameters"]].concat(settings).concat([[]]), fm = [], h0 = sm.length;
       sm.push(metaHead.concat(["What it is"]).concat(countHead).concat(["p", "Live picks", "Live hits", "Live hit ratio", "Live score"]));
       done.forEach(function (x) { var T = x.K.total, LV = x.K.live, s = blank(), r = sm.length, c0 = nm + 1, lv = str(liveTag), N = col(x, "N");
         x.rows.forEach(function (w) { if (typeof w.year === "number") addTo(s, w); });
@@ -2790,6 +2800,12 @@
         yc.push(meta(x).concat([y, short(k)]).concat(counts(s, x, "$" + A1(r, nm), "$" + A1(r, nm + 1), r, nm + 2))); fmtCounts(r, nm + 2); }); }); });
       var wsYC = sheet("Year x Category", yc, [30, 16, 15, 10, 10, 12, 16, 8, 8, 10, 10, 12, 12, 14, 8, 12, 12], fm); wsYC["!autofilter"] = { ref: "A3:Q" + yc.length };
 
+      // walk-forward: every model's training window and the parameters it chose, year by year (runs 3 and 4 share the models of 1 and 2)
+      if (wf) { var tw = [["Predicting", "Trained on (return years)", "Parameters", "Target", "Formula", "Category", "Training fund-years", "Parameters in the model"]];
+        wf.keys.forEach(function (k) { var F = wf.fits[k], m = F.it[3]; F.years.concat(F.live ? [{ year: null, R: F.live }] : []).forEach(function (w) { w.R.list.forEach(function (x) {
+          tw.push([w.year === null ? liveTag : w.year, o.from + "-" + (w.year === null ? E.LAST : w.year - 1), m.par, m.tg, m.f, x.cat === E.ALL ? "All funds" : short(x.cat), x.train, x.fit ? x.fit.vars.join("; ") : "no model"]); }); }); });
+        var wsTW = sheet("Training windows", tw, [14, 22, 16, 15, 10, 18, 12, 120], []); wsTW["!autofilter"] = { ref: "A1:H" + tw.length }; }
+
       // each run: every fund. Actual (quartile) comes from Actual rank and Funds in category with the cut-offs
       // max(1, round(n/4)), round(n/2), round(3n/4); Result from Shortlist / In basket and Actual; Random = the share of
       // the year's category that finishes in the chosen quartiles
@@ -2806,9 +2822,81 @@
               F("AVERAGEIFS(" + rng("O") + "," + rng("A") + ",A" + n + "," + rng("B") + ",B" + n + ")", r.ep)]);
             fmt.push([n - 1, 13], [n - 1, 15, "0.0"]); });
         var ws = sheet(x.it[0], rows, [22, 16, 44, 20, 9, 9, 7, 7, 9, 12, 10, 10, 10, 9, 7, 12], fmt); ws["!autofilter"] = { ref: "A1:P" + rows.length }; });
-      XLSX.writeFile(wb, "Iterations_Selected_and_AR9_Q" + o.quarts.slice().sort().join("") + "_L" + o.from + "-" + o.to + "_T" + o.tFrom + "-" + o.tTo + ((o.amcOut || []).length ? "_" + o.amcOut.length + "_AMCs_out" : "") + exTag() + ".xlsx"); // the AMCs are listed on Summary
-      btn.disabled = false; btn.textContent = "Export iterations"; }
+      XLSX.writeFile(wb, (wf ? "WalkForward_" : "") + "Iterations_Selected_and_AR9_Q" + o.quarts.slice().sort().join("") + "_L" + o.from + "-" + (wf ? "expanding" : o.to) + "_T" + o.tFrom + "-" + o.tTo + ((o.amcOut || []).length ? "_" + o.amcOut.length + "_AMCs_out" : "") + exTag() + ".xlsx"); // the AMCs are listed on Summary
+    } }
+
+  // ---------------- Walk-forward: all 16 iterations, each test year predicted by models trained on every return year before it
+  // (training from the chosen start to the year before, parameters chosen afresh), the live year by models trained up to the
+  // last return year. The AMC filter only changes the picks, so runs with and without it share their models.
+  function drawWf() { var id = "wf", c = TC.wf, px = c.px, box = $("p-wf"), yr = function (k) { return "<select id=\"" + px + k + "\" aria-label=\"" + k + "\"></select>"; };
+    box.innerHTML = "<div class=\"card\"><h2>Walk-forward · all 16 iterations</h2><p class=\"hint\" style=\"margin:0\">Each test year is predicted only from the years before it. With training from 2006 and testing 2021–2025: <b>2021</b> is predicted by models trained on returns 2006–2020, <b>2022</b> on 2006–2021, … <b>2025</b> on 2006–2024, and the <b>live</b> picks on 2006–2025. Every model chooses its parameters afresh from its own training years (steps 1–4 of the Absolute and Excess return tabs), then picks each category's best 2–3 funds and the 14-fund basket. The 16 iterations: parameters selected in training and the nine AR previous parameters × absolute and excess return × one formula for all categories or one per category × without and with the AMC filter.</p></div>" +
+      "<div class=\"card\"><div class=\"pgrid\"><div class=\"pfield\"><span>Training starts</span>" + yr("AF") + "</div><div class=\"pfield\"><span>Testing</span><div class=\"pair\">" + yr("TF") + "to" + yr("TT") + "</div></div>" +
+      tcFields(px) +
+      "<div class=\"pgo\"><button type=\"button\" class=\"pbtn main\" id=\"" + px + "Run\">Run all 16</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Export\" disabled title=\"The iterations workbook (Summary, Yearwise, Categorywise, Year x Category, Training windows, then the 16 runs), formula-linked\">Export to Excel</button></div></div>" +
+      "<div class=\"ptime\" id=\"" + px + "Time\" aria-hidden=\"true\"></div><div class=\"pkey\"><span><b style=\"background:var(--blue)\"></b>Training for the first test year</span><span><b style=\"background:var(--orange)\"></b>Testing (each year joins the training of the years after it)</span></div><p class=\"perr\" id=\"" + px + "Err\" hidden></p>" +
+      tcOptions(px) + "</div>" +
+      "<div id=\"" + px + "Out\"><div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\">Loading…</p></div></div>";
+    zReady(function () { var E = window.PeriodEngine, yrs = []; for (var y = E.FIRST; y <= E.LAST; y++) yrs.push(y);
+      var def = { AF: 2006, TF: 2021, TT: 2025 };
+      Object.keys(def).forEach(function (k) { $(px + k).innerHTML = yrs.map(function (v) { return "<option" + (v === def[k] ? " selected" : "") + ">" + v + "</option>"; }).join(""); $(px + k).addEventListener("change", wfCheck); });
+      $(px + "Q").addEventListener("change", function (ev) { if (!$(px + "Q").querySelector("input:checked")) ev.target.checked = true; if (c.res) wfPick(); });
+      $(px + "Big").addEventListener("change", function () { if (c.res) wfPick(); });
+      $(px + "Run").addEventListener("click", wfRun); $(px + "Export").addEventListener("click", wfExport);
+      wfCheck(); tqLatest(function () { tcAmcWire(id); wfRun(); });
+    }, function () { $(px + "Out").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"perr\">Could not load the data.</p></div>"; }); }
+  // the page's choices; to = the first test year's last training year (each later year trains one year further)
+  function wfOpts() { var px = TC.wf.px, amcSel = tcAmcSel("wf"), qs = Array.prototype.map.call($(px + "Q").querySelectorAll("input:checked"), function (x) { return +x.value; }), tf = +$(px + "TF").value;
+    return { group: window.PeriodEngine.ALL, combined: true, quarts: qs, big: +$(px + "Big").value, skip: TC_SKIP, target: "absolute", from: +$(px + "AF").value, to: tf - 1, tFrom: tf, tTo: +$(px + "TT").value, se: $(px + "Se").value, fe: $(px + "Fe").value === "1", amcOut: tcAmcText(amcSel), dropFunds: tcDrop(amcSel) }; }
+  function wfCheck() { var E = window.PeriodEngine, px = TC.wf.px, o = wfOpts(), msg = "";
+    if (o.tFrom > o.tTo) msg = "The testing period must start before it ends.";
+    else if (o.from >= o.tFrom) msg = "Training must start before the first test year.";
+    else if (exYears(o.from, o.tFrom - 1) < E.MIN_YEARS) msg = "The first test year needs at least " + E.MIN_YEARS + " training years before it.";
+    else if (!exYears(o.tFrom, o.tTo)) msg = "The testing period has no years left after the exclusion.";
+    $(px + "Err").hidden = !msg; $(px + "Err").textContent = msg; $(px + "Run").disabled = !!msg;
+    var t = ""; for (var y = E.FIRST; y <= E.LAST; y++) t += "<i class=\"" + (exOut(y) ? "x" : y >= o.from && y < o.tFrom ? "a" : y >= o.tFrom && y <= o.tTo ? "t" : "") + "\"></i>"; $(px + "Time").innerHTML = t;
+    return !msg; }
+  // one model set per target, parameters (selected or AR 9) and formula (one, or one per category)
+  function wfKey(o) { return o.target + "|" + (o.vars ? "ar9" : "sel") + "|" + (o.combined ? "same" : "diff"); }
+  function wfRun() { var c = TC.wf, px = c.px, E = window.PeriodEngine, P = window.PANEL, L = window.LATEST, skip = window.NOSEC ? EX_CATS : null, btn = $(px + "Run");
+    if (!wfCheck()) return;
+    var o = wfOpts(), its = tcIterList(o), fits = {}, keys = [], jobs = [], ys = []; for (var y = o.tFrom; y <= o.tTo; y++) if (!exOut(y)) ys.push(y);
+    its.forEach(function (it) { var k = wfKey(it[2]); if (fits[k]) return; fits[k] = { years: [], live: null, it: it }; keys.push(k); ys.forEach(function (y) { jobs.push([k, it[2], y]); }); jobs.push([k, it[2], null]); });
+    c.res = null; $(px + "Export").disabled = true; btn.disabled = true;
+    $(px + "Out").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\" id=\"wfProg\">Fitting " + jobs.length + " models…</p></div>";
+    function step(i) { if (i === jobs.length) { c.fits = fits; c.keys = keys; c.ys = ys; c.o0 = o; c.res = 1; btn.disabled = false; btn.textContent = "Run all 16"; wfPick(); return; }
+      btn.textContent = "Fitting " + (i + 1) + " of " + jobs.length + "…"; if ($("wfProg")) $("wfProg").textContent = "Fitting model " + (i + 1) + " of " + jobs.length + " (" + keys.length + " models × " + ys.length + " test years + the live year)…";
+      setTimeout(function () { var j = jobs[i];
+        if (j[2] === null) fits[j[0]].live = L ? E.tqCat(P, Object.assign({}, j[1], { to: E.LAST, tFrom: E.LAST + 1, tTo: E.LAST + 1 }), L, skip) : null;
+        else fits[j[0]].years.push({ year: j[2], R: E.tqCat(P, Object.assign({}, j[1], { to: j[2] - 1, tFrom: j[2], tTo: j[2] }), null, skip) });
+        step(i + 1); }, 15); }
     step(0); }
+  // the picks from the fitted models: the quartiles, the 3-pick rule and the AMC ticks only change these, not the models
+  function wfPick() { var c = TC.wf, E = window.PeriodEngine; if (!c.res) return;
+    var o = Object.assign(wfOpts(), { from: c.o0.from, to: c.o0.to, tFrom: c.o0.tFrom, tTo: c.o0.tTo, se: c.o0.se, fe: c.o0.fe }), its = tcIterList(o);
+    c.o = o; c.done = its.map(function (it) { return { it: it, K: E.tqWalkPicks(c.fits[wfKey(it[2])], it[2]) }; });
+    $("wfExport").disabled = false; wfRender(); }
+  function wfRender() { var c = TC.wf, E = window.PeriodEngine, o = c.o, done = c.done, L = window.LATEST, qn = E.quartName(o.quarts), ys = c.ys, liveY = L ? L.target : "live", out = $("wfOut");
+    function pv(t) { return t && isFinite(t.p) ? zP(t.p) : "—"; }
+    var h = "<h2 class=\"psec\">Results<small>Walk-forward · each test year trained on returns " + o.from + " to the year before · tested on returns " + ys[0] + "–" + ys[ys.length - 1] + " · live " + liveY + " trained on " + o.from + "–" + E.LAST + " · hit = finishes in the " + qn + " of its category" + (o.amcOut.length ? " · AMC filter (runs 3 and 4): " + o.amcOut.length + " AMCs, as ticked above" : "") + "</small></h2>";
+    h += "<div class=\"card\"><h2>All 16 iterations</h2><p class=\"hint\">The test years together. A ratio's small number is hits of picks; a score's is the random score (what a random fund of the same categories would average). Score: " + tcPts() + ".</p><div class=\"wide\"><table><thead><tr><th>Iteration</th><th>Parameters</th><th>Target</th><th>Formula</th><th>AMC filter</th><th class=\"num\">Top 2–3 picks</th><th class=\"num\">p</th><th class=\"num\">Basket</th><th class=\"num\">Picks score</th><th class=\"num\">Basket score</th><th class=\"num\">Live " + liveY + "</th><th class=\"num\">Live score</th></tr></thead><tbody>" +
+      done.map(function (x) { var K = x.K, m = x.it[3], LV = K.live; return "<tr><td><b>" + esc(x.it[0]) + "</b></td><td>" + esc(m.par) + "</td><td>" + esc(m.tg) + "</td><td>" + m.f + "</td><td>" + m.amc + "</td><td class=\"num\">" + tcRatio(K.total, 1) + "</td><td class=\"num\">" + pv(K.total) + "</td><td class=\"num\">" + tcRatio(K.basketTotal) + "</td><td class=\"num\">" + tcScore(K.total, 1) + "</td><td class=\"num\">" + tcScore(K.basketTotal) + "</td><td class=\"num\">" + tcRatio(LV && LV.picks) + "</td><td class=\"num\">" + tcScore(LV && LV.picks) + "</td></tr>"; }).join("") + "</tbody></table></div></div>";
+    h += "<div class=\"card\"><h2>Year by year</h2><p class=\"hint\">Each column's picks come from models trained on the returns shown under its year.</p><div class=\"controls\" style=\"margin:8px 0\"><select id=\"wfShow\" aria-label=\"Show\"><option value=\"p\">Top 2–3 picks: hit ratio</option><option value=\"b\">Basket: hit ratio</option><option value=\"ps\">Top 2–3 picks: score</option><option value=\"bs\">Basket: score</option></select></div><div class=\"wide\"><table id=\"wfYears\"></table></div></div>";
+    h += "<div class=\"card\"><h2>Training windows and the parameters each model chose</h2><p class=\"hint\">The models are refitted for every test year, so the parameters can change from year to year. The AMC filter doesn't change training, so runs 3 and 4 use the models of runs 1 and 2. The AR 9 models always use the nine AR previous parameters.</p><div class=\"controls\" style=\"margin:8px 0\"><select id=\"wfModel\" aria-label=\"Model\">" +
+      c.keys.map(function (k) { var m = c.fits[k].it[3]; return "<option value=\"" + k + "\">" + esc(m.par) + " · " + esc(m.tg) + " · " + (m.f === "Same" ? "one formula for all categories" : "a formula per category") + "</option>"; }).join("") + "</select><select id=\"wfCat\" aria-label=\"Category\"></select></div><div class=\"wide\"><table id=\"wfTrain\"></table></div></div>";
+    out.innerHTML = h;
+    function years() { var k = $("wfShow").value, pk = k.charAt(0) === "p" ? "picks" : "basket", tot = pk === "picks" ? "total" : "basketTotal", cell = function (t) { return k.length > 1 ? tcScore(t) : tcRatio(t); };
+      $("wfYears").innerHTML = "<thead><tr><th>Iteration</th>" + ys.map(function (y) { return "<th class=\"num\">" + y + "<br><span class=\"muted\">trained " + o.from + "–" + (y - 1) + "</span></th>"; }).join("") + "<th class=\"num\">All test years</th><th class=\"num\">" + liveY + " live<br><span class=\"muted\">trained " + o.from + "–" + E.LAST + "</span></th></tr></thead><tbody>" +
+        done.map(function (x) { var K = x.K; return "<tr><td><b>" + esc(x.it[0]) + "</b></td>" + ys.map(function (y) { var t = K.years.filter(function (z) { return z.year === y; })[0]; return "<td class=\"num\">" + cell(t && t[pk]) + "</td>"; }).join("") + "<td class=\"num\">" + cell(K[tot]) + "</td><td class=\"num\">" + cell(K.live && K.live[pk]) + "</td></tr>"; }).join("") + "</tbody>"; }
+    function windows(F) { return F.years.concat(F.live ? [{ year: null, R: F.live }] : []); }
+    function cats() { var F = c.fits[$("wfModel").value], diff = $("wfModel").value.split("|")[2] === "diff", seen = {}, list = [];
+      windows(F).forEach(function (w) { w.R.list.forEach(function (m) { if (!seen[m.cat]) { seen[m.cat] = 1; list.push(m.cat); } }); }); list.sort();
+      $("wfCat").innerHTML = list.map(function (k) { return "<option value=\"" + esc(k) + "\">" + (k === E.ALL ? "All funds" : esc(short(k))) + "</option>"; }).join(""); $("wfCat").hidden = !diff; train(); }
+    function train() { var F = c.fits[$("wfModel").value], cat = $("wfCat").value;
+      $("wfTrain").innerHTML = "<thead><tr><th>Predicting</th><th>Trained on returns</th><th class=\"num\">Training fund-years</th><th class=\"num\">Parameters</th><th>Parameters in the model</th></tr></thead><tbody>" +
+        windows(F).map(function (w) { var m = w.R.list.filter(function (x) { return x.cat === cat; })[0]; return "<tr><td><b>" + (w.year === null ? liveY + " live" : w.year) + "</b></td><td>" + o.from + "–" + (w.year === null ? E.LAST : w.year - 1) + "</td><td class=\"num\">" + (m ? m.train.toLocaleString("en-IN") : "—") + "</td><td class=\"num\">" + (m && m.fit ? m.fit.vars.length : "—") + "</td><td>" + (m && m.fit ? esc(m.fit.vars.map(zName).join(", ")) : "<span class=\"muted\">no model</span>") + "</td></tr>"; }).join("") + "</tbody>"; }
+    $("wfShow").addEventListener("change", years); $("wfModel").addEventListener("change", cats); $("wfCat").addEventListener("change", train); years(); cats(); }
+  function wfExport() { var c = TC.wf, btn = $("wfExport"); if (!c.done) return; btn.disabled = true; btn.textContent = "Building…";
+    setTimeout(function () { tcIterBook(c.done, c.o, { fits: c.fits, keys: c.keys, ys: c.ys }, function (ok) { btn.disabled = false; btn.textContent = ok ? "Export to Excel" : "Export failed - retry"; }); }, 30); }
 
   // ---------------- AR MP analysis: where the AR model portfolio's funds finished each calendar year (data: armp.js)
   var AR = null;
@@ -3544,6 +3632,7 @@
     rt: drawRt,
     tqa: function () { drawTc("tqa"); },
     tqe: function () { drawTc("tqe"); },
+    wf: drawWf,
     armp: drawAr,
     tq2: function () { drawTq("tq2"); },
     funds: drawFunds,
