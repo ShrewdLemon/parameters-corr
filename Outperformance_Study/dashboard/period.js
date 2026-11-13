@@ -637,58 +637,72 @@
   // (3 when the category has o.big+ funds), a hit when the fund finishes in the chosen quartiles of its category; and a
   // basket that takes o.basket[category] funds from each category. R = tqCat result.
   var BASKET = { "Large & Mid Cap": 3, "Focused Fund": 2, "Multi Cap Fund": 2, "Small cap Fund": 2, "Flexi Cap Fund": 2, "Large Cap Fund": 1, "Mid Cap Fund": 1, "Sector Funds": 1 };
+  // a fund's score: points for the quartile it finished in, Q1 to Q4
+  var SCORE = [100, 65, 35, 0];
   function tqPicks(R, o) { var qs = o.quarts || [1], tg = o.target, big = o.big || 20, basket = o.basket || BASKET, det = [], live = [];
     R.list.forEach(function (x) { if (x.test && x.test.n) det = det.concat(x.test.detail); if (x.pred) live = live.concat(x.pred.funds); });
-    function blank() { return { picks: 0, hits: 0, base: 0, v: 0 }; }
-    function add(t, pr, hit) { t.picks++; t.hits += hit; t.base += pr; t.v += pr * (1 - pr); }
+    // pts = the picks' points, ep = their random score (the average points of their category that year)
+    function blank() { return { picks: 0, hits: 0, base: 0, v: 0, pts: 0, ep: 0 }; }
+    function add(t, p) { t.picks++; t.hits += p.hit; t.base += p.pr; t.v += p.pr * (1 - p.pr); t.pts += p.pts; t.ep += p.ep; }
     // one year (or the live year): groups by category; score / actual read through the getters
     // the funds of the ticked AMCs (o.dropFunds: 1 = every prediction year, or { year: 1 }) are removed from that test or live
     // year's data: never picked and not counted in the category's quartiles. Training keeps them (tqCat ignores o.dropFunds).
     function kept(yr) { return function (f) { return !o.dropFunds || !isDropped(o.dropFunds, f.fund || f.name, yr); }; }
     function run(items, score, actual, year, blocked) { var G = {}; items.forEach(function (d, i) { if (actual(d) !== null) (G[d.cat] = G[d.cat] || []).push(i); }); var picks = [], bask = [], every = [];
       Object.keys(G).sort().forEach(function (cat) { var ix = G[cat], n = ix.length; if (n < PEER_MIN) return; var sub = {}; sub.g = ix;
-        var aq = quartIdx(items.map(actual), sub), k = ix.filter(function (i) { return qs.indexOf(aq[i]) >= 0; }).length, pr = k / n, order = ix.slice().sort(function (a, b) { return score(items[b]) - score(items[a]); }), aord = ix.slice().sort(function (a, b) { return actual(items[b]) - actual(items[a]); }), N = n >= big ? 3 : 2, B = basket[cat] || 0, np = 0, nb = 0;
-        order.forEach(function (i, j) { var d = items[i], row = { year: year, cat: cat, fund: d.fund || d.name, score: score(d), actual: actual(d), q: aq[i], rank: j + 1, actualRank: aord.indexOf(i) + 1, n: n, hit: qs.indexOf(aq[i]) >= 0 ? 1 : 0, pr: pr };
+        var aq = quartIdx(items.map(actual), sub), k = ix.filter(function (i) { return qs.indexOf(aq[i]) >= 0; }).length, pr = k / n, ep = ix.reduce(function (a, i) { return a + SCORE[aq[i] - 1]; }, 0) / n, order = ix.slice().sort(function (a, b) { return score(items[b]) - score(items[a]); }), aord = ix.slice().sort(function (a, b) { return actual(items[b]) - actual(items[a]); }), N = n >= big ? 3 : 2, B = basket[cat] || 0, np = 0, nb = 0;
+        order.forEach(function (i, j) { var d = items[i], row = { year: year, cat: cat, fund: d.fund || d.name, score: score(d), actual: actual(d), q: aq[i], rank: j + 1, actualRank: aord.indexOf(i) + 1, n: n, hit: qs.indexOf(aq[i]) >= 0 ? 1 : 0, pr: pr, pts: SCORE[aq[i] - 1], ep: ep };
           row.blocked = blocked && blocked(d) ? 1 : 0; row.pick = !row.blocked && np < N ? 1 : 0; row.inBasket = !row.blocked && nb < B ? 1 : 0;
           if (row.pick) { np++; picks.push(row); } if (row.inBasket) { nb++; bask.push(row); } every.push(row); }); });
       return { picks: picks, basket: bask, every: every }; }
     var years = {}; det.forEach(function (d) { (years[d.year] = years[d.year] || []).push(d); });
     var out = { years: [], total: blank(), basketTotal: blank(), cats: {}, basketCats: {}, picks: [], basket: [], every: [] };
     Object.keys(years).sort().forEach(function (y) { var r = run(years[y].filter(kept(+y)), function (d) { return d.score[tg]; }, function (d) { return d.actual; }, +y), t = blank(), b = blank();
-      r.picks.forEach(function (p) { add(t, p.pr, p.hit); add(out.total, p.pr, p.hit); add(out.cats[p.cat] = out.cats[p.cat] || blank(), p.pr, p.hit); });
-      r.basket.forEach(function (p) { add(b, p.pr, p.hit); add(out.basketTotal, p.pr, p.hit); add(out.basketCats[p.cat] = out.basketCats[p.cat] || blank(), p.pr, p.hit); });
+      r.picks.forEach(function (p) { add(t, p); add(out.total, p); add(out.cats[p.cat] = out.cats[p.cat] || blank(), p); });
+      r.basket.forEach(function (p) { add(b, p); add(out.basketTotal, p); add(out.basketCats[p.cat] = out.basketCats[p.cat] || blank(), p); });
       out.picks = out.picks.concat(r.picks); out.basket = out.basket.concat(r.basket); out.every = out.every.concat(r.every); out.years.push({ year: +y, picks: t, basket: b }); });
     [out.total, out.basketTotal].forEach(function (t) { var pz = pooled({ hits: t.hits, base: t.base, v: t.v }); t.z = pz.z; t.p = pz.p; });
     out.live = null;
     var ly = live.length ? R.list.filter(function (x) { return x.pred; })[0].pred.target : null; live = live.filter(kept(ly));
     if (live.length) { var Lr = run(live, function (f) { return f.score[tg]; }, function (f) { return f.live; }, ly), lt = blank(), lb = blank();
-      Lr.picks.forEach(function (p) { add(lt, p.pr, p.hit); }); Lr.basket.forEach(function (p) { add(lb, p.pr, p.hit); });
+      Lr.picks.forEach(function (p) { add(lt, p); }); Lr.basket.forEach(function (p) { add(lb, p); });
       // every fund's next-year pick, including the ones with no live return yet
       var all = run(live, function (f) { return f.score[tg]; }, function () { return 0; }, null);
       out.live = { picks: lt, basket: lb, rows: Lr, next: all, label: R.list.filter(function (x) { return x.pred; })[0].pred.liveLabel, year: R.list.filter(function (x) { return x.pred; })[0].pred.target }; }
     return out; }
   function tqPickSheets(K, KA, R, RA, o) { var qn = quartName(o.quarts), F = function (f, v) { return { t: typeof v === "string" ? "s" : "n", v: v, f: f }; }, basket = o.basket || BASKET;
+    // scores to one decimal: SF = a formula, SV = a value; pts(c) = the points for the quartile in cell c
+    function SF(f, v) { var c = F(f, v); c.z = "0.0"; return c; }
+    function SV(v) { return v === "" ? "" : { t: "n", v: v, z: "0.0" }; }
+    function avg(t) { return t && t.picks ? t.pts / t.picks : ""; }
+    function rnd(t) { return t && t.picks ? t.ep / t.picks : ""; }
+    function pts(c) { return "IF(" + c + "=\"Q1\"," + SCORE[0] + ",IF(" + c + "=\"Q2\"," + SCORE[1] + ",IF(" + c + "=\"Q3\"," + SCORE[2] + "," + SCORE[3] + ")))"; }
+    var nP = K.picks.length + 1, nB = K.basket.length + 1, PK = function (c) { return "Picks!$" + c + "$2:$" + c + "$" + nP; }, BK = function (c) { return "Basket!$" + c + "$2:$" + c + "$" + nB; };
     var me = [["Top picks per category (" + o.target + " return)"], [], ["Model", o.combined ? "One model on all funds; funds ranked inside their category" : "One model on " + o.group + " funds only, with the parameters chosen in that category"], ["Left out", (o.skip || []).join(", ") + (o.amcOut && o.amcOut.length ? "; these AMCs' funds removed from the test and live years shown (training keeps them): " + o.amcOut.join(", ") : "")], ["Training (return years)", o.from + "-" + o.to], ["Test (return years)", o.tFrom + "-" + o.tTo], ["Picks", "Each test year, each category's best 3 funds by predicted " + o.target + " return when it has " + (o.big || 20) + "+ funds, otherwise the best 2."],
       ["Hit", "A pick that finished in the " + qn + " of its category that year (quartile cut-offs round(n/4), round(n/2), round(3n/4))."], ["Random", "Chance that a randomly picked fund of the category finishes there: funds in the " + qn + " / funds in the category."],
-      ["Basket", Object.keys(basket).map(function (c) { return c + " " + basket[c]; }).join(", ") + " (the model portfolio's category counts)."], ["AR previous", "The same picks from a line on the nine AR previous parameters."]];
-    var sy = [["Return year", "Picks", "Hits", "Hit ratio", "Random", "Basket funds", "Basket hits", "Basket hit ratio", "AR previous picks hit ratio", "AR previous basket hit ratio"]];
-    K.years.forEach(function (t) { var r = sy.length + 1, a = KA ? KA.years.filter(function (z) { return z.year === t.year; })[0] : null; sy.push([t.year, t.picks.picks, t.picks.hits, F("C" + r + "/B" + r, t.picks.hits / t.picks.picks), t.picks.base / t.picks.picks, t.basket.picks, t.basket.hits, t.basket.picks ? F("G" + r + "/F" + r, t.basket.hits / t.basket.picks) : "", a ? a.picks.hits / a.picks.picks : "", a && a.basket.picks ? a.basket.hits / a.basket.picks : ""]); });
-    var n = sy.length; sy.push(["All years", F("SUM(B2:B" + n + ")", K.total.picks), F("SUM(C2:C" + n + ")", K.total.hits), F("C" + (n + 1) + "/B" + (n + 1), K.total.hits / K.total.picks), K.total.base / K.total.picks, F("SUM(F2:F" + n + ")", K.basketTotal.picks), F("SUM(G2:G" + n + ")", K.basketTotal.hits), F("G" + (n + 1) + "/F" + (n + 1), K.basketTotal.hits / K.basketTotal.picks), KA ? KA.total.hits / KA.total.picks : "", KA && KA.basketTotal.picks ? KA.basketTotal.hits / KA.basketTotal.picks : ""]);
-    var sc = [["Category", "Picks", "Hits", "Hit ratio", "Random", "Basket picks", "Basket hits", "AR previous picks hit ratio"]];
-    Object.keys(K.cats).sort().forEach(function (c) { var t = K.cats[c], b = K.basketCats[c], a = KA && KA.cats[c], r = sc.length + 1; sc.push([c, t.picks, t.hits, F("C" + r + "/B" + r, t.hits / t.picks), t.base / t.picks, b ? b.picks : 0, b ? b.hits : 0, a ? a.hits / a.picks : ""]); });
-    function rows(list, head) { return [head].concat(list.map(function (p) { return [p.year, p.cat, p.fund, p.score, p.rank, p.n, p.actual, p.actualRank, "Q" + p.q, p.hit ? "Yes" : "No"]; })); }
-    var head = ["Return year", "Category", "Fund", "Predicted " + o.target + " %", "Predicted rank", "Funds in category", "Actual excess %", "Actual rank", "Actual quartile", "Hit (" + qn + ")"];
-    var out = [["Read_Me", me, [22, 110]], ["By_Year", sy, [12, 8, 8, 10, 10, 12, 12, 14, 18, 18]], ["By_Category", sc, [22, 8, 8, 10, 10, 12, 12, 18]], ["Picks", rows(K.picks, head), [12, 20, 44, 14, 12, 12, 12, 10, 12, 12]], ["Basket", rows(K.basket, head), [12, 20, 44, 14, 12, 12, 12, 10, 12, 12]]];
-    if (K.live) { var nx = [["Category", "Fund", "Predicted " + o.target + " %", "Rank in category", "Funds", "Top pick", "In basket", "Live return " + K.live.label, "Live quartile"]], liveBy = {};
+      ["Basket", Object.keys(basket).map(function (c) { return c + " " + basket[c]; }).join(", ") + " (the model portfolio's category counts)."], ["AR previous", "The same picks from a line on the nine AR previous parameters."],
+      ["Score", "Points for the quartile a fund finished in: Q1 " + SCORE[0] + ", Q2 " + SCORE[1] + ", Q3 " + SCORE[2] + ", Q4 " + SCORE[3] + " (the Score column on Picks and Basket, a formula on Actual quartile). By_Year and By_Category average it."], ["Random score", "The average score of the fund's category that year: what a random pick from the category would get."]];
+    var sy = [["Return year", "Picks", "Hits", "Hit ratio", "Random", "Basket funds", "Basket hits", "Basket hit ratio", "AR previous picks hit ratio", "AR previous basket hit ratio", "Score", "Random score", "Basket score", "AR previous score"]];
+    K.years.forEach(function (t) { var r = sy.length + 1, a = KA ? KA.years.filter(function (z) { return z.year === t.year; })[0] : null; sy.push([t.year, t.picks.picks, t.picks.hits, F("C" + r + "/B" + r, t.picks.hits / t.picks.picks), t.picks.base / t.picks.picks, t.basket.picks, t.basket.hits, t.basket.picks ? F("G" + r + "/F" + r, t.basket.hits / t.basket.picks) : "", a ? a.picks.hits / a.picks.picks : "", a && a.basket.picks ? a.basket.hits / a.basket.picks : "",
+      SF("IFERROR(AVERAGEIFS(" + PK("K") + "," + PK("A") + ",A" + r + "),\"\")", avg(t.picks)), SF("IFERROR(AVERAGEIFS(" + PK("L") + "," + PK("A") + ",A" + r + "),\"\")", rnd(t.picks)), SF("IFERROR(AVERAGEIFS(" + BK("K") + "," + BK("A") + ",A" + r + "),\"\")", avg(t.basket)), SV(a ? avg(a.picks) : "")]); });
+    var n = sy.length; sy.push(["All years", F("SUM(B2:B" + n + ")", K.total.picks), F("SUM(C2:C" + n + ")", K.total.hits), F("C" + (n + 1) + "/B" + (n + 1), K.total.hits / K.total.picks), K.total.base / K.total.picks, F("SUM(F2:F" + n + ")", K.basketTotal.picks), F("SUM(G2:G" + n + ")", K.basketTotal.hits), F("G" + (n + 1) + "/F" + (n + 1), K.basketTotal.hits / K.basketTotal.picks), KA ? KA.total.hits / KA.total.picks : "", KA && KA.basketTotal.picks ? KA.basketTotal.hits / KA.basketTotal.picks : "",
+      SF("IFERROR(AVERAGE(" + PK("K") + "),\"\")", avg(K.total)), SF("IFERROR(AVERAGE(" + PK("L") + "),\"\")", rnd(K.total)), SF("IFERROR(AVERAGE(" + BK("K") + "),\"\")", avg(K.basketTotal)), SV(KA ? avg(KA.total) : "")]);
+    var sc = [["Category", "Picks", "Hits", "Hit ratio", "Random", "Basket picks", "Basket hits", "AR previous picks hit ratio", "Score", "Random score", "Basket score", "AR previous score"]];
+    Object.keys(K.cats).sort().forEach(function (c) { var t = K.cats[c], b = K.basketCats[c], a = KA && KA.cats[c], r = sc.length + 1; sc.push([c, t.picks, t.hits, F("C" + r + "/B" + r, t.hits / t.picks), t.base / t.picks, b ? b.picks : 0, b ? b.hits : 0, a ? a.hits / a.picks : "",
+      SF("IFERROR(AVERAGEIFS(" + PK("K") + "," + PK("B") + ",A" + r + "),\"\")", avg(t)), SF("IFERROR(AVERAGEIFS(" + PK("L") + "," + PK("B") + ",A" + r + "),\"\")", rnd(t)), SF("IFERROR(AVERAGEIFS(" + BK("K") + "," + BK("B") + ",A" + r + "),\"\")", avg(b)), SV(a ? avg(a) : "")]); });
+    function rows(list, head) { return [head].concat(list.map(function (p, i) { return [p.year, p.cat, p.fund, p.score, p.rank, p.n, p.actual, p.actualRank, "Q" + p.q, p.hit ? "Yes" : "No", F(pts("I" + (i + 2)), p.pts), SV(p.ep)]; })); }
+    var head = ["Return year", "Category", "Fund", "Predicted " + o.target + " %", "Predicted rank", "Funds in category", "Actual excess %", "Actual rank", "Actual quartile", "Hit (" + qn + ")", "Score", "Random score"];
+    var out = [["Read_Me", me, [22, 110]], ["By_Year", sy, [12, 8, 8, 10, 10, 12, 12, 14, 18, 18, 8, 12, 12, 16]], ["By_Category", sc, [22, 8, 8, 10, 10, 12, 12, 18, 8, 12, 12, 16]], ["Picks", rows(K.picks, head), [12, 20, 44, 14, 12, 12, 12, 10, 12, 12, 8, 12]], ["Basket", rows(K.basket, head), [12, 20, 44, 14, 12, 12, 12, 10, 12, 12, 8, 12]]];
+    if (K.live) { var nx = [["Category", "Fund", "Predicted " + o.target + " %", "Rank in category", "Funds", "Top pick", "In basket", "Live return " + K.live.label, "Live quartile", "Live score"]], liveBy = {};
       K.live.rows.picks.concat(K.live.rows.basket).forEach(function (p) { liveBy[p.fund] = p; });
       var bk = {}; K.live.next.basket.forEach(function (p) { bk[p.fund] = 1; });
-      K.live.next.picks.concat(K.live.next.basket.filter(function (p) { return !K.live.next.picks.some(function (q) { return q.fund === p.fund; }); })).forEach(function (p) { var l = liveBy[p.fund]; nx.push([p.cat, p.fund, p.score, p.rank, p.n, K.live.next.picks.some(function (q) { return q.fund === p.fund; }) ? "Yes" : "No", bk[p.fund] ? "Yes" : "No", l ? l.actual : "", l ? "Q" + l.q : ""]); });
-      out.push(["Picks_" + K.live.year, nx, [20, 44, 14, 10, 8, 10, 10, 14, 10]]); }
+      K.live.next.picks.concat(K.live.next.basket.filter(function (p) { return !K.live.next.picks.some(function (q) { return q.fund === p.fund; }); })).forEach(function (p) { var l = liveBy[p.fund]; nx.push([p.cat, p.fund, p.score, p.rank, p.n, K.live.next.picks.some(function (q) { return q.fund === p.fund; }) ? "Yes" : "No", bk[p.fund] ? "Yes" : "No", l ? l.actual : "", l ? "Q" + l.q : "", l ? F(pts("I" + (nx.length + 1)), l.pts) : ""]); });
+      out.push(["Picks_" + K.live.year, nx, [20, 44, 14, 10, 8, 10, 10, 14, 10, 10]]); }
     tqCatSheets(R, null).forEach(function (sh) { if (sh[0] === "Parameters" || sh[0] === "Lines") out.push(sh); });
     if (RA) tqCatSheets(RA, null).forEach(function (sh) { if (sh[0] === "Lines") out.push(["AR_Prev_Lines", sh[1], sh[2]]); });
     return out; }
 
-  var api = { tqPicks: tqPicks, tqPickSheets: tqPickSheets, BASKET: BASKET, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
+  var api = { tqPicks: tqPicks, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
   root.PeriodEngine = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : this);
