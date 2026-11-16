@@ -637,6 +637,9 @@
   // (3 when the category has o.big+ funds), a hit when the fund finishes in the chosen quartiles of its category; and a
   // basket that takes o.basket[category] funds from each category. R = tqCat result.
   var BASKET = { "Large & Mid Cap": 3, "Focused Fund": 2, "Multi Cap Fund": 2, "Small cap Fund": 2, "Flexi Cap Fund": 2, "Large Cap Fund": 1, "Mid Cap Fund": 1, "Sector Funds": 1 };
+  // the basket of a return year: that year's model portfolio's funds per category (o.basketYears, from mpbasket.js), else o.basket
+  // or the fixed mix above
+  function basketOf(o, y) { return (o.basketYears && y && o.basketYears[y]) || o.basket || BASKET; }
   // a fund's score: points for the quartile it finished in, Q1 to Q4
   var SCORE = [100, 65, 35, 0];
   function tqPicks(R, o) { var qs = o.quarts || [1], tg = o.target, big = o.big || 20, basket = o.basket || BASKET, det = [], live = [];
@@ -648,9 +651,9 @@
     // the funds of the ticked AMCs (o.dropFunds: 1 = every prediction year, or { year: 1 }) are removed from that test or live
     // year's data: never picked and not counted in the category's quartiles. Training keeps them (tqCat ignores o.dropFunds).
     function kept(yr) { return function (f) { return !o.dropFunds || !isDropped(o.dropFunds, f.fund || f.name, yr); }; }
-    function run(items, score, actual, year, blocked) { var G = {}; items.forEach(function (d, i) { if (actual(d) !== null) (G[d.cat] = G[d.cat] || []).push(i); }); var picks = [], bask = [], every = [];
+    function run(items, score, actual, year, blocked, bYear) { var G = {}; items.forEach(function (d, i) { if (actual(d) !== null) (G[d.cat] = G[d.cat] || []).push(i); }); var picks = [], bask = [], every = [];
       Object.keys(G).sort().forEach(function (cat) { var ix = G[cat], n = ix.length; if (n < PEER_MIN) return; var sub = {}; sub.g = ix;
-        var aq = quartIdx(items.map(actual), sub), k = ix.filter(function (i) { return qs.indexOf(aq[i]) >= 0; }).length, pr = k / n, ep = ix.reduce(function (a, i) { return a + SCORE[aq[i] - 1]; }, 0) / n, order = ix.slice().sort(function (a, b) { return score(items[b]) - score(items[a]); }), aord = ix.slice().sort(function (a, b) { return actual(items[b]) - actual(items[a]); }), N = n >= big ? 3 : 2, B = basket[cat] || 0, np = 0, nb = 0;
+        var aq = quartIdx(items.map(actual), sub), k = ix.filter(function (i) { return qs.indexOf(aq[i]) >= 0; }).length, pr = k / n, ep = ix.reduce(function (a, i) { return a + SCORE[aq[i] - 1]; }, 0) / n, order = ix.slice().sort(function (a, b) { return score(items[b]) - score(items[a]); }), aord = ix.slice().sort(function (a, b) { return actual(items[b]) - actual(items[a]); }), N = n >= big ? 3 : 2, B = basketOf(o, bYear || year)[cat] || 0, np = 0, nb = 0;
         order.forEach(function (i, j) { var d = items[i], row = { year: year, cat: cat, fund: d.fund || d.name, score: score(d), actual: actual(d), q: aq[i], rank: j + 1, actualRank: aord.indexOf(i) + 1, n: n, hit: qs.indexOf(aq[i]) >= 0 ? 1 : 0, pr: pr, pts: SCORE[aq[i] - 1], ep: ep };
           row.blocked = blocked && blocked(d) ? 1 : 0; row.pick = !row.blocked && np < N ? 1 : 0; row.inBasket = !row.blocked && nb < B ? 1 : 0;
           if (row.pick) { np++; picks.push(row); } if (row.inBasket) { nb++; bask.push(row); } every.push(row); }); });
@@ -667,7 +670,7 @@
     if (live.length) { var Lr = run(live, function (f) { return f.score[tg]; }, function (f) { return f.live; }, ly), lt = blank(), lb = blank();
       Lr.picks.forEach(function (p) { add(lt, p); }); Lr.basket.forEach(function (p) { add(lb, p); });
       // every fund's next-year pick, including the ones with no live return yet
-      var all = run(live, function (f) { return f.score[tg]; }, function () { return 0; }, null);
+      var all = run(live, function (f) { return f.score[tg]; }, function () { return 0; }, null, null, ly);
       out.live = { picks: lt, basket: lb, rows: Lr, next: all, label: R.list.filter(function (x) { return x.pred; })[0].pred.liveLabel, year: R.list.filter(function (x) { return x.pred; })[0].pred.target }; }
     return out; }
   // walk-forward: W = { years: [{ year, R }], live: R or null }, where each R = tqCat trained on o.from to the year before
@@ -715,7 +718,7 @@
     var nP = K.picks.length + 1, nB = K.basket.length + 1, PK = function (c) { return "Picks!$" + c + "$2:$" + c + "$" + nP; }, BK = function (c) { return "Basket!$" + c + "$2:$" + c + "$" + nB; };
     var me = [["Top picks per category (" + o.target + " return)"], [], ["Model", o.combined ? "One model on all funds; funds ranked inside their category" : "One model on " + o.group + " funds only, with the parameters chosen in that category"], ["Left out", (o.skip || []).join(", ") + (o.amcOut && o.amcOut.length ? "; these AMCs' funds removed from the test and live years shown (training keeps them): " + o.amcOut.join(", ") : "")], ["Training (return years)", o.from + "-" + o.to], ["Test (return years)", o.tFrom + "-" + o.tTo], ["Picks", "Each test year, each category's best 3 funds by predicted " + o.target + " return when it has " + (o.big || 20) + "+ funds, otherwise the best 2."],
       ["Hit", "A pick that finished in the " + qn + " of its category that year (quartile cut-offs round(n/4), round(n/2), round(3n/4))."], ["Random", "Chance that a randomly picked fund of the category finishes there: funds in the " + qn + " / funds in the category."],
-      ["Basket", Object.keys(basket).map(function (c) { return c + " " + basket[c]; }).join(", ") + " (the model portfolio's category counts)."], ["AR previous", "The same picks from a line on the nine AR previous parameters."],
+      ["Basket", o.basketYears ? "Each year the model portfolio's funds per category (Value and Contra and Dividend Yield holdings can't be picked, those categories are left out): " + Object.keys(o.basketYears).map(function (y) { var b = o.basketYears[y]; return y + ": " + Object.keys(b).map(function (c) { return c + " " + b[c]; }).join(", "); }).join("; ") + "." : Object.keys(basket).map(function (c) { return c + " " + basket[c]; }).join(", ") + " (the model portfolio's category counts)."], ["AR previous", "The same picks from a line on the nine AR previous parameters."],
       ["Score", "Points for the quartile a fund finished in: Q1 " + SCORE[0] + ", Q2 " + SCORE[1] + ", Q3 " + SCORE[2] + ", Q4 " + SCORE[3] + " (the Score column on Picks and Basket, a formula on Actual quartile). By_Year and By_Category average it."], ["Random score", "The average score of the fund's category that year: what a random pick from the category would get."]];
     var sy = [["Return year", "Picks", "Hits", "Hit ratio", "Random", "Basket funds", "Basket hits", "Basket hit ratio", "AR previous picks hit ratio", "AR previous basket hit ratio", "Score", "Random score", "Basket score", "AR previous score"]];
     K.years.forEach(function (t) { var r = sy.length + 1, a = KA ? KA.years.filter(function (z) { return z.year === t.year; })[0] : null; sy.push([t.year, t.picks.picks, t.picks.hits, F("C" + r + "/B" + r, t.picks.hits / t.picks.picks), t.picks.base / t.picks.picks, t.basket.picks, t.basket.hits, t.basket.picks ? F("G" + r + "/F" + r, t.basket.hits / t.basket.picks) : "", a ? a.picks.hits / a.picks.picks : "", a && a.basket.picks ? a.basket.hits / a.basket.picks : "",
@@ -737,7 +740,7 @@
     if (RA) tqCatSheets(RA, null).forEach(function (sh) { if (sh[0] === "Lines") out.push(["AR_Prev_Lines", sh[1], sh[2]]); });
     return out; }
 
-  var api = { tqPicks: tqPicks, tqWalkPicks: tqWalkPicks, tqConfusion: tqConfusion, predQuart: predQuart, tqPickSheets: tqPickSheets, BASKET: BASKET, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
+  var api = { tqPicks: tqPicks, tqWalkPicks: tqWalkPicks, tqConfusion: tqConfusion, predQuart: predQuart, tqPickSheets: tqPickSheets, BASKET: BASKET, basketOf: basketOf, SCORE: SCORE, arMp: arMp, arSheets: arSheets, arPortfolio: arPortfolio, quartName: quartName, tqCat: tqCat, tqCatSheets: tqCatSheets, tqFit: tqFit, tqTest: tqTest, tqPredict: tqPredict, tqPick: tqPick, tqSheets: tqSheets, TQ_METHODS: TQ_METHODS, PEER_MIN: PEER_MIN, regSquare: regSquare, regCross: regCross, regTest: regTest, regTestSheets: regTestSheets, regDerive: regDerive, regCompare: regCompare, regPredict: regPredict, regTop: regTop, regSimple: regSimple, regPick: regPick, regMulti: regMulti, regSheets: regSheets, EXCESS_MIN: EXCESS_MIN, run: run, indicators: indicators, indSheets: indSheets, corr: corr, corrOrder: corrOrder, corrSheets: corrSheets, family: family, feasible: feasible, sheets: sheets, TARGET: TARGET, MIN_CALLS: MIN_CALLS, MIN_YEARS: MIN_YEARS, ALL: ALL, BASKETS: BASKETS, TIERS: TIERS, PREVIOUS: PREVIOUS, FIRST: 2006, LAST: 2025 };
   root.PeriodEngine = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : this);
