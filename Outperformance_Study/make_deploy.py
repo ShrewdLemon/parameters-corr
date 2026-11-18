@@ -28,7 +28,7 @@ def main():
     # Version every data file the page loads by its content, so a browser never mixes
     # a new page with a cached old file.
     html = (OUT / "index.html").read_text()
-    for name in ("data.js", "funds.js", "category.js", "prediction.js", "previous.js", "period.js", "latest.js", "armp.js", "amc.js", "mpbasket.js", "ex/data.js", "ex/prediction.js", "ex/previous.js", "sec/data.js", "sec/prediction.js", "sec/previous.js", "exsec/data.js", "exsec/prediction.js", "exsec/previous.js", "research.js", "markov.js", "top3.js", "panel.js",
+    for name in ("data.js", "funds.js", "category.js", "prediction.js", "previous.js", "period.js", "latest.js", "armp.js", "amc.js", "isin.js", "mpbasket.js", "ex/data.js", "ex/prediction.js", "ex/previous.js", "sec/data.js", "sec/prediction.js", "sec/previous.js", "exsec/data.js", "exsec/prediction.js", "exsec/previous.js", "research.js", "markov.js", "top3.js", "panel.js",
                  "vendor/xlsx.full.min.js"):
         tag = hashlib.md5((OUT / name).read_bytes()).hexdigest()[:10]
         for quote in ('"',):
