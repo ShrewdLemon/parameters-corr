@@ -813,6 +813,7 @@
 </script>
 <script src="amc.js?v=d65b5b9b5b"></script>
 <script src="isin.js?v=01aa772246"></script>
+<script src="flows.js?v=89f2ab4d6f"></script>
 <script src="mpbasket.js?v=40a54b73e6"></script>
 <script>
 (function () {
@@ -2978,7 +2979,7 @@
     box.innerHTML = "<div class=\"card\"><h2>Walk-forward · all 16 iterations</h2><p class=\"hint\" style=\"margin:0\">Each test year is predicted only from the years before it. With training from 2006 and testing 2021–2025: <b>2021</b> is predicted by models trained on returns 2006–2020, <b>2022</b> on 2006–2021, … <b>2025</b> on 2006–2024, and the <b>live</b> picks on 2006–2025. Every model chooses its parameters afresh from its own training years (steps 1–4 of the Absolute and Excess return tabs), then picks each category's best 2–3 funds (or 5, under Picks per category, and without last year's Q1 funds if you choose) and the basket (as many funds per category as that year's model portfolio held). The 16 iterations: parameters selected in training and the nine AR previous parameters × absolute and excess return × one formula for all categories or one per category × without and with the AMC filter. Below the results: confusion matrices and an audit of every model against the fixed linear regression.</p></div>" +
       "<div class=\"card\"><div class=\"pgrid\"><div class=\"pfield\"><span>Training starts</span>" + yr("AF") + "</div><div class=\"pfield\"><span>Testing</span><div class=\"pair\">" + yr("TF") + "to" + yr("TT") + "</div></div>" +
       tcFields(px) +
-      "<div class=\"pgo\"><button type=\"button\" class=\"pbtn main\" id=\"" + px + "Run\">Run all 16</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Export\" disabled title=\"The iterations workbook (Summary, Yearwise, Categorywise, Year x Category, Confusion, Training windows, the audit sheets, then the 16 runs), formula-linked\">Export to Excel</button></div></div>" +
+      "<div class=\"pgo\"><button type=\"button\" class=\"pbtn main\" id=\"" + px + "Run\">Run all 16</button><button type=\"button\" class=\"pbtn\" id=\"" + px + "Export\" disabled title=\"The iterations workbook (Summary, Yearwise, Categorywise, Year x Category, Confusion, Training windows, the audit sheets, then the 16 runs), formula-linked\">Export to Excel</button><select id=\"wfBookRun\" aria-label=\"Picks by year: which run\" disabled><option>Run first</option></select><button type=\"button\" class=\"pbtn\" id=\"wfBook\" disabled title=\"Each run's picks in the with flows (with ISIN) layout: a sheet per year and Overall-All yrs with Actual, Score, the 65+ flag and the year before's flow\">Picks by year</button></div></div>" +
       "<div class=\"ptime\" id=\"" + px + "Time\" aria-hidden=\"true\"></div><div class=\"pkey\"><span><b style=\"background:var(--blue)\"></b>Training for the first test year (and the fixed models)</span><span><b style=\"background:var(--orange)\"></b>Testing (each year joins the walk-forward training of the years after it)</span></div><p class=\"perr\" id=\"" + px + "Err\" hidden></p>" +
       tcOptions(px) + "</div>" +
       "<div id=\"" + px + "Out\"><div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\">Loading…</p></div></div>";
@@ -2988,7 +2989,7 @@
       $(px + "Q").addEventListener("change", function (ev) { if (!$(px + "Q").querySelector("input:checked")) ev.target.checked = true; if (c.res) wfPick(); });
       $(px + "Big").addEventListener("change", function () { if (c.res) wfPick(); });
       $(px + "PickN").addEventListener("change", function () { tcPickRule(px); if (c.res) wfPick(); }); $(px + "PrevQ1").addEventListener("change", function () { if (c.res) wfPick(); });
-      $(px + "Run").addEventListener("click", wfRun); $(px + "Export").addEventListener("click", wfExport);
+      $(px + "Run").addEventListener("click", wfRun); $(px + "Export").addEventListener("click", wfExport); $("wfBook").addEventListener("click", wfBook);
       wfCheck(); tqLatest(function () { tcAmcWire(id); wfRun(); });
     }, function () { $(px + "Out").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"perr\">Could not load the data.</p></div>"; }); }
   // the page's choices; to = the first test year's last training year (each later year trains one year further)
@@ -3009,7 +3010,7 @@
     var o = wfOpts(), its = tcIterList(o), fits = {}, keys = [], jobs = [], ys = []; for (var y = o.tFrom; y <= o.tTo; y++) if (!exOut(y)) ys.push(y);
     // per model: the fixed fit (training o.from to the year before testing, tested on every test year), each test year's fit, the live fit
     its.forEach(function (it) { var k = wfKey(it[2]); if (fits[k]) return; fits[k] = { years: [], live: null, fixed: null, it: it }; keys.push(k); jobs.push([k, it[2], "fixed"]); ys.forEach(function (y) { jobs.push([k, it[2], y]); }); jobs.push([k, it[2], null]); });
-    c.res = null; $(px + "Export").disabled = true; btn.disabled = true;
+    c.res = null; $(px + "Export").disabled = true; $("wfBook").disabled = true; btn.disabled = true;
     $(px + "Out").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"muted\" style=\"margin:0\" id=\"wfProg\">Fitting " + jobs.length + " models…</p></div>";
     function step(i) { if (i === jobs.length) { c.fits = fits; c.keys = keys; c.ys = ys; c.o0 = o; c.res = 1; btn.disabled = false; btn.textContent = "Run all 16"; wfPick(); return; }
       btn.textContent = "Fitting " + (i + 1) + " of " + jobs.length + "…"; if ($("wfProg")) $("wfProg").textContent = "Fitting model " + (i + 1) + " of " + jobs.length + " (" + keys.length + " models × the fixed period, " + ys.length + " test years and the live year)…";
@@ -3024,7 +3025,9 @@
     var o = Object.assign(wfOpts(), { from: c.o0.from, to: c.o0.to, tFrom: c.o0.tFrom, tTo: c.o0.tTo, se: c.o0.se, fe: c.o0.fe }), its = tcIterList(o);
     c.o = o; c.done = its.map(function (it) { return { it: it, K: E.tqWalkPicks(c.fits[wfKey(it[2])], it[2]) }; });
     c.fixed = its.map(function (it) { return { it: it, K: E.tqPicks(c.fits[wfKey(it[2])].fixed, it[2]) }; });
-    $("wfExport").disabled = false; wfRender(); }
+    $("wfExport").disabled = false;
+    var bs = $("wfBookRun"), keep = bs.value; bs.innerHTML = "<option value=\"all\">All 16 runs (zip)</option>" + c.done.map(function (x, i) { return "<option value=\"" + i + "\">" + esc(x.it[0]) + "</option>"; }).join("");
+    if (bs.querySelector("option[value=\"" + keep + "\"]")) bs.value = keep; bs.disabled = false; $("wfBook").disabled = false; wfRender(); }
 
   // ---- audit helpers (the page and the workbook)
   // a model's windows: the fixed training period, then each test year's walk-forward window and the live one
@@ -3147,6 +3150,39 @@
     years(); confusion(); weighted(); audCats(); }
   function wfExport() { var c = TC.wf, btn = $("wfExport"); if (!c.done) return; btn.disabled = true; btn.textContent = "Building…";
     setTimeout(function () { tcIterBook(c.done, c.o, { c: c, fits: c.fits, keys: c.keys, ys: c.ys, fixed: c.fixed }, function (ok) { btn.disabled = false; btn.textContent = ok ? "Export to Excel" : "Export failed - retry"; }); }, 30); }
+
+  // Picks by year: each run's picks in the layout of the "with flows (with ISIN)" workbooks, a sheet per year (the live year
+  // first) and Overall-All yrs with Year, Category, ISIN, Fund, Actual, Score, a 65+ flag and the year before's flow (flows.js,
+  // from Flows since 2020.xlsx; a blank gets a note with the Morningstar figure), Hit / Total funds / share under the flag.
+  // The page's pick settings apply. One run as .xlsx, or all 16 in a .zip.
+  function wfBookOf(x) { var L = window.LATEST, liveTag = L ? L.target + " live" : "live", IS = window.ISIN || {}, FL = window.FLOWS || { years: [], flow: {}, ms: {} }, wb = XLSX.utils.book_new(), K = x.K;
+    var rows = K.picks.concat(K.live ? K.live.rows.picks.map(function (r) { return Object.assign({}, r, { year: liveTag }); }) : [])
+      .sort(function (a, b) { return String(a.year).localeCompare(String(b.year)) || a.cat.localeCompare(b.cat) || a.rank - b.rank; });
+    function flow(isin, prev) { var f = FL.flow[isin], v = f ? f[prev] : null, m = FL.ms[isin] ? FL.ms[isin][prev] : null; if (v !== null && v !== undefined) return { v: v };
+      var why = FL.years.indexOf(prev) < 0 ? "CY " + prev + " is not calculated in Flows since 2020.xlsx" : f ? "no flow for this fund in Flows since 2020.xlsx (no NAV in its lookup)" : "fund not in Flows since 2020.xlsx";
+      return { note: why + "." + (m !== null && m !== undefined ? " Morningstar figure: " + m.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " cr." : "") }; }
+    function sheet(title, list, head) { var aoa = [["Year", "Category", "ISIN", "Fund", "Actual", "Score", null, head]], notes = [], m = list.length + 1, hits = 0;
+      list.forEach(function (r, i) { var n = i + 2, isin = IS[r.fund] || "", fw = flow(isin, parseInt(String(r.year), 10) - 1); if (r.pts >= 65) hits++;
+        aoa.push([r.year, short(r.cat), isin, r.fund, "Q" + r.q, r.pts, { t: "n", v: r.pts >= 65 ? 1 : 0, f: "IF(F" + n + ">=65,1,0)" }, fw.note ? null : fw.v]); if (fw.note) notes.push([n, fw.note]); });
+      aoa.push([null, null, null, null, null, "Hit", { t: "n", v: hits, f: "SUM(G2:G" + m + ")" }], [null, null, null, null, null, "Total funds", { t: "n", v: list.length, f: "COUNT(G2:G" + m + ")" }],
+        [null, null, null, null, null, null, { t: "n", v: list.length ? hits / list.length : 0, f: "G" + (m + 1) + "/G" + (m + 2) }]);
+      var ws = XLSX.utils.aoa_to_sheet(aoa), cols = []; cols[0] = { wch: 13 }; cols[2] = { wch: 15 }; cols[3] = { wch: 13 }; cols[7] = { wch: 20 }; ws["!cols"] = cols;
+      for (var r = 2; r <= m; r++) if (ws["H" + r]) ws["H" + r].z = "#,##0.00_);[Red](#,##0.00)";
+      notes.forEach(function (nt) { var a = "H" + nt[0]; ws[a] = ws[a] || { t: "z" }; ws[a].c = [{ a: "Flows", t: nt[1] }]; ws[a].c.hidden = true; });
+      XLSX.utils.book_append_sheet(wb, ws, title); }
+    var ys = []; rows.forEach(function (r) { if (ys.indexOf(String(r.year)) < 0) ys.push(String(r.year)); });
+    ys.sort(function (a, b) { return b.localeCompare(a); }).forEach(function (y) { sheet(y.slice(0, 4), rows.filter(function (r) { return String(r.year) === y; }), "Flow CY " + (parseInt(y, 10) - 1) + " (Rs cr) · Flows since 2020"); });
+    sheet("Overall-All yrs", rows, "Flow, year - 1 (Rs cr) · Flows since 2020");
+    return wb; }
+  function wfBook() { var c = TC.wf, btn = $("wfBook"), v = $("wfBookRun").value; if (!c.done) return;
+    if (!window.XLSX) { loadScript("vendor/xlsx.full.min.js?v=31e9848e80", wfBook, function () { btn.textContent = "Download failed - retry"; }); return; }
+    var o = c.o, tag = (o.pickN ? "_" + o.pickN + "picks" : "") + (o.prevQ1 ? "_exPrevQ1" : "") + exTag(), name = function (x) { return x.it[0] + " - with flows (with ISIN)" + tag + ".xlsx"; };
+    if (v !== "all") { var x = c.done[+v]; XLSX.writeFile(wfBookOf(x), name(x), { compression: true }); return; }
+    var z = XLSX.CFB.utils.cfb_new({ root: "R" });
+    c.done.forEach(function (x) { XLSX.CFB.utils.cfb_add(z, name(x), new Uint8Array(XLSX.write(wfBookOf(x), { type: "array", bookType: "xlsx", compression: true }))); });
+    var out = XLSX.CFB.write(z, { fileType: "zip", type: "array" }), a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([out instanceof ArrayBuffer || ArrayBuffer.isView(out) ? out : new Uint8Array(out)], { type: "application/zip" }));
+    a.download = "WalkForward_Picks_by_year_with_flows" + tag + ".zip"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
 
   // ---------------- AR MP analysis: where the AR model portfolio's funds finished each calendar year (data: armp.js)
   var AR = null;
