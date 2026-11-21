@@ -263,6 +263,9 @@
   .pequation { margin: 10px 0 12px; padding: 16px 18px; background: var(--surface); border-left: 3px solid var(--ink); border-radius: 0 var(--radius) var(--radius) 0;
     font-family: var(--serif); font-size: 1.3rem; font-weight: 500; line-height: 1.7; color: var(--ink); }
   .pequation sub { font-size: 0.65em; } .peterm { white-space: nowrap; }
+  .pjump { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 14px 0 0; }
+  .pjump button { padding: 0; border: 0; background: none; font: inherit; font-size: 0.85rem; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .pjump button:hover { color: var(--ink); }
   .pelegend { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 3px 18px; font-size: 0.85rem; color: var(--ink-2); }
   .pelegend b { color: var(--ink); }
   .prule { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); } .prule li + li { margin-top: 4px; } .prule b { color: var(--ink); }
@@ -509,6 +512,7 @@
         <label for="rgFe">Year effects</label><select id="rgFe"><option value="0">No</option><option value="1">Yes, compare funds within each year</option></select>
       </div></details>
     </div>
+    <div id="rgTop"></div>
     <div id="rgSimple"></div>
     <div id="rgCmp"></div>
     <div id="rgMulti">
@@ -613,7 +617,7 @@
       <li><b>Clustered by year (default):</b> funds in one year share the market's move, so they aren't independent. This setting allows for that, with years − 1 degrees of freedom. Classic OLS treats every fund-year as independent, which gives much larger t-values.</li>
       <li><b>Year effects:</b> removes each year's average, so the model compares funds within a year, like Indicator tests.</li>
       <li><b>Top 20 heatmap:</b> rank correlations between the 20 parameters with the smallest p when tested one at a time. Values near ±1 mean they carry largely the same information.</li>
-      <li><b>Line equation:</b> each parameter's individual line is shown first. The multiple equation isn't their sum: each weight is the slope on the part of that parameter the others can't explain, known as the Frisch-Waugh-Lovell result.</li>
+      <li><b>Line equation:</b> at the top of Linear regression, with what each x is and how well it fits. How it's built, under Multiple regression, shows each parameter's individual line first. The multiple equation isn't their sum: each weight is the slope on the part of that parameter the others can't explain, known as the Frisch-Waugh-Lovell result.</li>
       <li><b>p alone and p in model:</b> p alone tests the parameter by itself over the whole selected period, and it decides Significant. p in model tests whether it adds anything once the others are held fixed, so overlapping parameters often lose significance there. Both are correct, and they answer different questions.</li>
       <li><b>AR previous parameters:</b> the nine parameters from the earlier study. Regression test can tick all nine at once, and the heatmap at the bottom of Linear regression shows how the model's parameters relate to them.</li>
       <li><b>Backtest:</b> applies the line equation to the years you choose and compares predictions with what happened. A fair backtest uses years after the ones the line was built from.</li>
@@ -2193,12 +2197,12 @@
     if (!m) h += "<div class=\"card\"><p class=\"pverdict\">" + (R.sel.length ? "<b>This model can't be estimated.</b> Too few fund-years have all the chosen parameters." : "<b>No model.</b> " + (R.names ? "No parameter is significant in all your periods with the same direction." : "No parameter qualifies in this selection.")) + "</p></div>";
     else { var sig = m.terms.filter(function (t, i) { var x = i < m.q ? R.s.filter(function (s) { return s.name === R.sel[i]; })[0] : null; return x && x.fit && x.fit.terms[0].p <= 0.05; }).length, inModel = m.terms.filter(function (t, i) { return i < m.q && t.p <= 0.05; }).length, vh = m.terms.filter(function (t, i) { return i < m.q && t.vif > 10; }).length;
       h += "<div class=\"card\"><h2>Parameters in the model</h2><p class=\"hint\">Significant uses <b>p alone</b>: each parameter's own regression over the whole period, returns " + o.from + "–" + o.to + ". The in-model figures test whether a parameter adds anything once the others are held fixed, so they're usually weaker. VIF above 10 means heavy overlap with the others.</p>" + rgParamTable(m, R.sel, R.s) + "</div>";
-      h += rgEquation(RG.der, RG.o);
+      h += rgEquation(RG.der, RG.o, true);
       h += "<div id=\"rgBt\"></div><div id=\"rgShort\"></div><div id=\"rgCross\"></div>"; }
     var multiH = h; h = "<h2 class=\"psec\">One parameter at a time<small>All 101, each in its own regression with its own fund-years</small></h2><div class=\"card\"><div class=\"controls\" style=\"margin:0 0 8px\"><input type=\"search\" id=\"rgTS\" placeholder=\"Search parameters\" aria-label=\"Search parameters\"><select id=\"rgTV\" aria-label=\"Show\"><option value=\"\">All parameters</option><option value=\"s\">Significant only</option></select><select id=\"rgTO\" aria-label=\"Sort\"><option value=\"p\">Smallest p</option><option value=\"t\">Largest t (either sign)</option><option value=\"n\">As in the data</option></select><span class=\"muted\" id=\"rgTN\"></span></div><div class=\"wide pscroll\"><table id=\"rgT\"></table></div></div>";
     h += "<h2 class=\"psec\">Correlation of the top 20 parameters<small>The 20 smallest p-values above, strongest first · Returns " + o.from + "–" + o.to + " · " + esc(label) + "</small></h2><div class=\"card\"><p class=\"hint\">Rank correlation across fund-years. A value near +1 or −1 means two parameters carry largely the same information, so they aren't separate signals. Faint means no relationship and bold means a strong one, positive or negative. The number in each cell shows the sign. Hover for the exact value.</p><div class=\"pkey\"><span>0</span><span class=\"cscale\"></span><span>−1 or +1</span></div><div class=\"wide\"><div class=\"chart\" id=\"rgHeat\"></div></div></div>";
     h += "<div id=\"rgPred\"></div>";
-    $("rgSimple").innerHTML = h; $("rgOut").innerHTML = multiH; rgHeat(); rgPred(); rgCmp(); $("rgRuleBox").innerHTML = rgRule(); rgBacktest(); rgCross();
+    $("rgSimple").innerHTML = h; $("rgOut").innerHTML = multiH; rgTopEq(); rgHeat(); rgPred(); rgCmp(); $("rgRuleBox").innerHTML = rgRule(); rgBacktest(); rgCross();
     function tb() { var t = $("rgTS").value.toLowerCase(), v = $("rgTV").value, srt = $("rgTO").value, P = function (x) { return x.fit ? x.fit.terms[0].p : Infinity; };
       var use = R.s.filter(function (x) { return (!t || x.name.toLowerCase().indexOf(t) >= 0) && (!v || P(x) <= 0.05); });
       if (srt === "p") use.sort(function (a, b) { return P(a) - P(b); }); if (srt === "t") use.sort(function (a, b) { return (b.fit ? Math.abs(b.fit.terms[0].t) : -1) - (a.fit ? Math.abs(a.fit.terms[0].t) : -1); }); 
@@ -2237,7 +2241,7 @@
       $("rgCT2").innerHTML = "<thead><tr><th>Parameter</th>" + C.periods.map(function (w) { return "<th class=\"num\">" + w.from + "–" + w.to + "</th>"; }).join("") + "<th class=\"num\">Significant in</th><th>Direction</th></tr></thead><tbody>" + (use.map(function (r) { return "<tr><td><b>" + esc(zName(r.name)) + "</b></td>" + r.cells.map(function (c) { return "<td class=\"num\" style=\"white-space:nowrap\">" + (!c ? "<span class=\"muted\">no data</span>" : (c.sig ? "<b>" : "<span class=\"muted\">") + "t " + f2(c.t, 2) + " · p " + zP(c.p) + (c.sig ? "</b>" : "</span>")) + "</td>"; }).join("") + "<td class=\"num\">" + r.count + " of " + list.length + "</td><td>" + (r.dir > 0 ? "▲ Positive" : r.dir < 0 ? "▼ Negative" : "<b>Flips</b>") + "</td></tr>"; }).join("") || "<tr><td class=\"muted\" colspan=\"" + (list.length + 3) + "\">No parameter meets this.</td></tr>") + "</tbody>"; }
     $("rgCV").addEventListener("change", tb); tb(); }
   function rgPred() { var D = RG.pred, o = RG.o, TG = window.PeriodEngine.TARGET, box = $("rgPred"), all = o.group === window.PeriodEngine.ALL;
-    var head = "<h2 class=\"psec\">Prediction for " + (window.LATEST ? window.LATEST.target : "next year") + "<small>The multiple regression at the bottom of this page, applied to each fund's " + (window.LATEST ? window.LATEST.year : "latest") + " parameter values</small></h2>";
+    var head = "<h2 class=\"psec\">Prediction for " + (window.LATEST ? window.LATEST.target : "next year") + "<small>The line equation at the top of this page, applied to each fund's " + (window.LATEST ? window.LATEST.year : "latest") + " parameter values</small></h2>";
     if (!D) { box.innerHTML = head + "<div class=\"card\"><p class=\"hint\" style=\"margin:0\">" + (!window.LATEST ? "Could not load latest.js." : !RG.pick.kept.length ? (RG.names ? "No parameter is significant in all your periods with the same direction, so there's no model." : "No parameter is significant in this selection, so there's no model.") : "This model can't be estimated: too few fund-years have all the chosen parameters.") + "</p></div>"; return; }
     var n = D.rows.length, up = D.rows.filter(function (r) { return r.pred >= TG; }).length, T = D.tell, mean = n ? D.rows.reduce(function (s, r) { return s + r.pred; }, 0) / n : 0;
     var parts = D.vars.map(function (v, i) { return (D.coefs[i] < 0 ? "− " : "+ ") + rgNum(Math.abs(D.coefs[i]), 4) + " × " + zName(v); }).join("  ");
@@ -2297,13 +2301,25 @@
     hb.addEventListener("mousemove", function (ev) { var g = ev.target.closest ? ev.target.closest("g[data-i]") : null; if (!g) { tip.style.display = "none"; return; } var i = +g.getAttribute("data-i"), j = +g.getAttribute("data-j"), r = X.r[i][j], rc = hb.getBoundingClientRect();
       tip.innerHTML = "<b>" + esc(zName(X.rows[i])) + "</b>" + esc(X.cols[j]) + "<br>Correlation " + (isFinite(r) ? sgn(r, 3) : "too few fund-years") + " · " + X.n[i][j] + " fund-years"; tip.style.display = "block"; tip.style.left = Math.min(ev.clientX - rc.left + 14, 760) + "px"; tip.style.top = ev.clientY - rc.top + 14 + "px"; });
     hb.addEventListener("mouseleave", function () { tip.style.display = "none"; }); }
-  function rgEquation(D, o) { if (!D) return "";
-    function xn(i) { return "x<sub>" + (i + 1) + "</sub>"; }
+  // the equation and what each x is: the top of Linear regression, and the Line equation card on Regression test
+  function rgEqHead(D) { function xn(i) { return "x<sub>" + (i + 1) + "</sub>"; }
     function term(w, i, first) { return "<span class=\"peterm\">" + (w < 0 ? (first ? "−" : "− ") : (first ? "" : "+ ")) + rgNum(Math.abs(w), 4) + xn(i) + "</span>"; }
     function tail(b) { return b === null ? "" : " <span class=\"peterm\">" + (b < 0 ? "− " : "+ ") + rgNum(Math.abs(b), 4) + "</span>"; }
+    return "<div class=\"pequation\"><span class=\"peterm\">y =</span> " + D.items.map(function (x, i) { return term(x.weight, i, i === 0); }).join(" ") + tail(D.intercept) + "</div>" +
+      "<div class=\"pelegend\"><div><b>y</b> = next-year excess return over the Nifty 50, %</div>" + D.items.map(function (x, i) { return "<div><b>" + xn(i) + "</b> = " + esc(zName(x.name)) + "</div>"; }).join("") + (D.intercept === null ? "" : "<div><b>" + rgNum(D.intercept, 4) + "</b> = starting value</div>") + "</div>"; }
+  // the top of Linear regression: the line equation the prediction, the backtest and the export use, with its fit
+  function rgTopEq() { var E = window.PeriodEngine, R = RG, o = R.o, m = R.m.fit, D = R.der, label = o.group === E.ALL ? o.group : short(o.group), L = window.LATEST;
+    var h = "<h2 class=\"psec\">Line equation<small>";
+    if (!m || !D) { $("rgTop").innerHTML = h + "Next-year excess over the Nifty 50 · Returns " + o.from + "–" + o.to + " · " + esc(label) + "</small></h2><div class=\"card\"><p class=\"hint\" style=\"margin:0\">No equation for this selection. Multiple regression, further down, says why.</p></div>"; return; }
+    h += "Next-year excess over the Nifty 50 · Returns " + o.from + "–" + o.to + " · " + esc(label) + " · " + D.items.length + (D.items.length === 1 ? " parameter" : " parameters") + " · " + m.N.toLocaleString("en-IN") + " fund-years · R² " + (100 * m.r2).toFixed(1) + "%, adjusted " + (100 * m.adjR2).toFixed(1) + "%" + (o.fe ? ", from the parameters only " + (100 * m.partialR2).toFixed(1) + "%" : "") + "</small></h2>";
+    h += "<div class=\"card\">" + rgEqHead(D) + "<div class=\"pjump\"><button type=\"button\" data-go=\"rgHow\">How it's built ↓</button>" + (L ? "<button type=\"button\" data-go=\"rgPred\">Prediction for " + L.target + " ↓</button>" : "") + "<button type=\"button\" data-go=\"rgBt\">Backtest ↓</button></div></div>";
+    $("rgTop").innerHTML = h;
+    [].forEach.call($("rgTop").querySelectorAll("[data-go]"), function (b) { b.addEventListener("click", function () { var t = $(b.getAttribute("data-go")); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); }); }); }
+  // how: the steps only, under Multiple regression on Linear regression (the equation itself is at the top)
+  function rgEquation(D, o, how) { if (!D) return "";
+    function xn(i) { return "x<sub>" + (i + 1) + "</sub>"; }
     function line(w, b, i) { return "y = " + (w < 0 ? "−" : "") + rgNum(Math.abs(w), 4) + xn(i) + (b < 0 ? " − " : " + ") + rgNum(Math.abs(b), 4); }
-    var one = D.items.length === 1, h = "<div class=\"card\"><h2>Line equation</h2><div class=\"pequation\"><span class=\"peterm\">y =</span> " + D.items.map(function (x, i) { return term(x.weight, i, i === 0); }).join(" ") + tail(D.intercept) + "</div>";
-    h += "<div class=\"pelegend\"><div><b>y</b> = next-year excess return over the Nifty 50, %</div>" + D.items.map(function (x, i) { return "<div><b>" + xn(i) + "</b> = " + esc(zName(x.name)) + "</div>"; }).join("") + (D.intercept === null ? "" : "<div><b>" + rgNum(D.intercept, 4) + "</b> = starting value</div>") + "</div>";
+    var one = D.items.length === 1, h = how ? "<div class=\"card\" id=\"rgHow\"><h2>How the line equation is built</h2><p class=\"hint\">The equation is at the top of the page. These steps rebuild it from the data.</p>" : "<div class=\"card\"><h2>Line equation</h2>" + rgEqHead(D);
     h += "<h3 class=\"pstep\">Step 1 · Each parameter's individual line</h3><p class=\"hint\">One straight line for each parameter alone, on the same " + D.N + " fund-years as the model. These can differ slightly from the One parameter table, which uses every fund-year available for that parameter.</p><div class=\"wide\"><table><thead><tr><th>Parameter</th><th>Individual line</th><th class=\"num\">Average value</th></tr></thead><tbody>" +
       D.items.map(function (x, i) { return "<tr><td><b>" + xn(i) + " " + esc(zName(x.name)) + "</b></td><td style=\"white-space:nowrap\">" + line(x.aloneW, x.aloneB, i) + "</td><td class=\"num\">" + rgNum(x.meanX, 3) + "</td></tr>"; }).join("") + "</tbody></table></div>";
     if (one) { h += "<h3 class=\"pstep\">Step 2 · From the line to the equation</h3><p class=\"hint\">There's only one parameter, so its individual line is the equation.</p></div>"; return h; }
