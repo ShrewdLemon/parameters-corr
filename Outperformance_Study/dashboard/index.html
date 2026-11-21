@@ -814,6 +814,7 @@
 <script src="amc.js"></script>
 <script src="isin.js"></script>
 <script src="flows.js"></script>
+<script src="netflow.js"></script>
 <script src="mpbasket.js"></script>
 <script>
 (function () {
@@ -2617,12 +2618,72 @@
     else if (!exYears(o.tFrom, o.tTo)) msg = "The testing period has no years left after the exclusion.";
     $(px + "Err").hidden = !msg; $(px + "Err").textContent = msg; $(px + "Run").disabled = !!msg;
     var t = ""; for (var y = E.FIRST; y <= E.LAST; y++) t += "<i class=\"" + (exOut(y) ? "x" : y >= o.from && y <= o.to ? "a" : y >= o.tFrom && y <= o.tTo ? "t" : "") + "\"></i>"; $(px + "Time").innerHTML = t; }
-  function tcRun(id) { var c = TC[id], px = c.px, P = window.PANEL, o = tcOpts(id), E = window.PeriodEngine, skip = window.NOSEC ? EX_CATS : null; c.res = null; $(px + "Export").disabled = true;
+  function tcRun(id) { var c = TC[id], px = c.px, P = window.PANEL, o = tcOpts(id), E = window.PeriodEngine, skip = window.NOSEC ? EX_CATS : null; c.res = c.fb = c.fa = null; $(px + "Export").disabled = true;
     if (!P.nifty) { $(px + "Out").innerHTML = "<div class=\"card\" style=\"margin-top:18px\"><p class=\"pverdict\"><b>The data on this page is out of date</b> (no Nifty 50 returns). Reload the page with Ctrl + Shift + R.</p></div>"; return; }
-    c.res = E.tqCat(P, o, window.LATEST, skip); c.ar = E.tqCat(P, Object.assign({}, o, { vars: E.PREVIOUS.map(function (x) { return x[1]; }) }), window.LATEST, skip); tcPick(id); }
+    c.res = E.tqCat(P, o, window.LATEST, skip); c.ar = E.tqCat(P, Object.assign({}, o, { vars: E.PREVIOUS.map(function (x) { return x[1]; }) }), window.LATEST, skip); tcFlowFit(id, o, skip); tcPick(id); }
   // the picks only depend on the quartiles and the 2-or-3 rule, so changing those doesn't refit the lines
   function tcPick(id) { var c = TC[id], o = tcOpts(id), E = window.PeriodEngine; o.combined = c.res.o.combined;
-    c.k = E.tqPicks(c.res, o); c.ka = E.tqPicks(c.ar, o); c.o = o; $(c.px + "Export").disabled = !c.k.total.picks; $(c.px + "Iter").disabled = !c.k.total.picks; tcRender(id); }
+    c.k = E.tqPicks(c.res, o); c.ka = E.tqPicks(c.ar, o); c.kb = c.fb ? E.tqPicks(c.fb, o) : null; c.kf = c.fa ? E.tqPicks(c.fa, o) : null; c.o = o; $(c.px + "Export").disabled = !c.k.total.picks; $(c.px + "Iter").disabled = !c.k.total.picks; tcRender(id); }
+  // ---------------- net flow in the equation (netflow.js, from build_netflow.py): each fund's net flow in Rs crore of the
+  // parameter year E, by ISIN, as one more parameter that predicts the return of E + 1. Only the fund-years with a flow are
+  // used: without = the page's selection steps run on them (fb), with = those parameters plus the flow (fa), so a difference
+  // comes from the flow and not from the funds left out.
+  var FLOW_VAR = "Net Flow (Rs cr)", FV = null;
+  // a weight to 7 decimals, or 5 significant digits under 0.001 (a flow's weight per Rs crore is small)
+  function flowW(v) { return v === null || v === undefined || !isFinite(v) ? "—" : Math.abs(v) >= 0.001 || v === 0 ? f2(v, 7) : (v < 0 ? "−" : "") + Math.abs(v).toPrecision(5); }
+  function flowOf(name, year) { var NF = window.NETFLOW, isin = (window.ISIN || {})[name], f = NF && isin ? NF.flow[isin] : null, v = f ? f[year] : undefined; return v === undefined ? null : v; }
+  // the panel and the latest values on the fund-years (and latest funds) with a flow: B without the flow, F with it as the last
+  // parameter; cached for the panel's rows
+  function flowView() { var P = window.PANEL, L = window.LATEST; if (!window.NETFLOW) return null; if (FV && FV.src === P.rows && FV.L === L) return FV;
+    var rb = [], rf = [], pars = P.parameters.concat([FLOW_VAR]), lb = null, lf = null;
+    P.rows.forEach(function (r) { var v = flowOf(P.funds[r[2]], r[0]); if (v !== null) { rb.push(r); rf.push(r.concat([v])); } });
+    if (L) { var fs = [], vb = [], vf = []; L.funds.forEach(function (f, i) { var v = flowOf(f[0], L.year); if (v !== null) { fs.push(f); vb.push(L.values[i]); vf.push(L.values[i].concat([v])); } });
+      lb = Object.assign({}, L, { funds: fs, values: vb }); lf = Object.assign({}, L, { parameters: pars, funds: fs, values: vf }); }
+    FV = { src: P.rows, L: L, B: { P: Object.assign({}, P, { rows: rb }), L: lb }, F: { P: Object.assign({}, P, { parameters: pars, rows: rf }), L: lf } }; return FV; }
+  // the tabs' model always has one line (all funds, or one category), so fb and fa are one tqCat each
+  function tcFlowFit(id, o, skip) { var c = TC[id], E = window.PeriodEngine, V = flowView(); if (!V) return;
+    c.fb = E.tqCat(V.B.P, o, V.B.L, skip); var x = c.fb.list[0];
+    c.fa = x && x.fit ? E.tqCat(V.F.P, Object.assign({}, o, { vars: x.fit.vars.concat([FLOW_VAR]) }), V.F.L, skip) : null; }
+  function tcFlowCard(id) { var c = TC[id], px = c.px, o = c.o, E = window.PeriodEngine, L = window.LATEST, qn = E.quartName(o.quarts), tg = c.target;
+    var h = "<h2 class=\"psec\">With net flow in the equation<small>The model's parameters plus each fund's net flow in the parameter year, refitted on the fund-years that have a flow</small></h2>";
+    if (!window.NETFLOW) return h + "<div class=\"card\"><p class=\"perr\" style=\"margin:0\">netflow.js is missing. Run python build_netflow.py \"FLows since 2005.xlsx\".</p></div>";
+    var xb = c.fb && c.fb.list[0], xa = c.fa && c.fa.list[0], Fb = xb && xb.fit, Fa = xa && xa.fit, x0 = c.res.list[0];
+    if (!Fa || !c.kf.total.picks) return h + "<div class=\"card\"><p class=\"pverdict\" style=\"margin:0\"><b>No equation with the flow.</b> " + (Fb ? "Too few fund-years have the model's parameters and a flow together." : "No parameter is significant on the fund-years with a flow.") + "</p></div>";
+    var T = c.kf.total, TB = c.kb.total, LV = c.kf.live, LB = c.kb.live, ft = Fa.fit.terms[Fa.vars.indexOf(FLOW_VAR)], NF = window.NETFLOW;
+    var term = function (F, v) { var i = F ? F.vars.indexOf(v) : -1; return i >= 0 ? F.fit.terms[i] : null; }, ic = function (F) { return F.fit.terms.length > F.vars.length ? F.fit.terms[F.vars.length] : null; };
+    var wrow = function (name, b, a, ta) { return "<tr><td>" + name + "</td><td class=\"num\">" + (b === null ? "—" : flowW(b)) + "</td><td class=\"num\"><b>" + flowW(a) + "</b></td><td class=\"num\">" + (ta ? f2(ta.t, 2) : "—") + "</td><td class=\"num\">" + (ta ? zP(ta.p) : "—") + "</td></tr>"; };
+    var fit = function (name, b, a) { return "<tr><td class=\"muted\">" + name + "</td><td class=\"num\">" + b + "</td><td class=\"num\">" + a + "</td><td></td><td></td></tr>"; };
+    h += "<div class=\"card\"><p class=\"pverdict\"><b>With the flow, the " + tcPk(o) + " finished in the " + qn + " " + zPct(T.hits, T.picks) + " of the time</b> (" + T.hits + " of " + T.picks + "), against " + zPct(TB.hits, TB.picks) + " (" + TB.hits + " of " + TB.picks + ") without it on the same fund-years. Average score " + f2(T.pts / T.picks, 1) + " against " + f2(TB.pts / TB.picks, 1) + "." + (LV && LB ? " Live " + esc(LV.label) + ": " + LV.picks.hits + " of " + LV.picks.picks + " with the flow, " + LB.picks.hits + " of " + LB.picks.picks + " without." : "") + "</p>" +
+      "<p class=\"hint\" style=\"margin:8px 0 0\"><b>" + esc(FLOW_VAR) + "</b> = the fund's net flow in calendar year E in Rs crore (AUM at December E − AUM at December E−1 × (1 + NAV return of E)), from " + esc(NF.source) + ", matched to the funds by ISIN. It sits with the parameters of year E, so it predicts the return of E+1; the " + (L ? L.target : "") + " picks use the " + (L ? L.year : "") + " flow. The parameters are the ones the selection steps choose on the same fund-years (<i>without the flow</i>); the flow is added to them, not chosen. Training fund-years with a flow: " + xa.train + " of " + x0.train + "; the others are left out of both versions here, not of the model above. The flow's weight is " + flowW(ft.coef) + " per Rs crore (t " + f2(ft.t, 2) + ", p " + zP(ft.p) + "): " + (ft.p <= 0.05 ? "<b>significant</b>" : "not significant") + " at p ≤ 0.05.</p>" +
+      "<div style=\"margin-top:14px\">" + tcLine(Fa, tg, flowW) + "</div>" +
+      "<div class=\"wide\" style=\"margin-top:14px\"><table><thead><tr><th>Variable</th><th class=\"num\">Weight without the flow</th><th class=\"num\">Weight with the flow</th><th class=\"num\">t with</th><th class=\"num\">p with</th></tr></thead><tbody>" +
+      Fa.vars.map(function (v, i) { var b = term(Fb, v); return wrow(v === FLOW_VAR ? "<b>" + esc(v) + "</b>" : esc(zName(v)), b ? b.coef : null, Fa.fit.terms[i].coef, Fa.fit.terms[i]); }).join("") +
+      wrow("Intercept", Fb ? Fb.a : null, Fa.a, ic(Fa)) + fit("Fund-years", Fb ? Fb.N : "—", Fa.N) + fit("R²", Fb ? f2(Fb.fit.r2, 4) : "—", f2(Fa.fit.r2, 4)) + fit("Adjusted R²", Fb ? f2(Fb.fit.adjR2, 4) : "—", f2(Fa.fit.adjR2, 4)) + "</tbody></table></div>" +
+      "<div class=\"pgo\" style=\"margin-top:14px\"><button type=\"button\" class=\"pbtn\" id=\"" + px + "FlowX\">Export with the flow</button></div></div>";
+    h += "<div class=\"card\"><h2>Hits with and without the flow</h2><p class=\"hint\">The same picks and quartiles as above, on the fund-years with a flow. The small number is hits of picks; scores are " + tcPts() + ", with the random score after vs.</p><div class=\"wide\"><table><thead><tr><th>Return year</th><th class=\"num\">Without the flow</th><th class=\"num\">With the flow</th><th class=\"num\">Score without</th><th class=\"num\">Score with</th></tr></thead><tbody>" +
+      c.kf.years.map(function (t) { var b = c.kb.years.filter(function (z) { return z.year === t.year; })[0]; return "<tr><td>" + t.year + "</td><td class=\"num\">" + tcRatio(b && b.picks, 1) + "</td><td class=\"num\">" + tcRatio(t.picks, 1) + "</td><td class=\"num\">" + tcScore(b && b.picks) + "</td><td class=\"num\">" + tcScore(t.picks) + "</td></tr>"; }).join("") +
+      "<tr><td><b>All years</b></td><td class=\"num\">" + tcRatio(TB, 1) + " <span class=\"muted\">p " + zP(TB.p) + "</span></td><td class=\"num\">" + tcRatio(T, 1) + " <span class=\"muted\">p " + zP(T.p) + "</span></td><td class=\"num\">" + tcScore(TB, 1) + "</td><td class=\"num\">" + tcScore(T, 1) + "</td></tr>" +
+      "<tr><td>Live, " + (LV ? esc(LV.label) : "") + "</td><td class=\"num\">" + tcRatio(LB && LB.picks) + "</td><td class=\"num\">" + tcRatio(LV && LV.picks) + "</td><td class=\"num\">" + tcScore(LB && LB.picks) + "</td><td class=\"num\">" + tcScore(LV && LV.picks) + "</td></tr></tbody></table></div></div>";
+    if (LV) { var lv = {}, pg = {}; LV.rows.picks.forEach(function (p) { lv[p.fund] = p; }); if (LB) LB.next.picks.forEach(function (p) { pg[p.fund] = 1; });
+      h += "<div class=\"card\"><h2>" + LV.year + " picks with the flow</h2><p class=\"hint\">From the " + L.year + " parameters and the " + L.year + " flow. Without the flow too = also a pick of the version without the flow on the same funds; No marks a pick the flow brought in.</p><div class=\"wide pscroll\"><table><thead><tr><th>Category</th><th>Fund</th><th class=\"num\">Net flow " + L.year + ", Rs cr</th><th class=\"num\">Predicted " + tg + "</th><th class=\"num\">Predicted rank</th><th>Without the flow too</th><th class=\"num\">Live return</th><th>Quartile</th><th>Result</th></tr></thead><tbody>" +
+        LV.next.picks.slice().sort(function (a, b) { return a.cat < b.cat ? -1 : a.cat > b.cat ? 1 : a.rank - b.rank; }).map(function (p) { var r2 = lv[p.fund];
+          return "<tr><td><span class=\"pill\">" + esc(short(p.cat)) + "</span></td><td>" + esc(p.fund) + "</td><td class=\"num\">" + rgNum(flowOf(p.fund, L.year), 1) + "</td><td class=\"num\">" + pct2(p.score, 2) + "</td><td class=\"num\">" + p.rank + " of " + p.n + "</td><td>" + (pg[p.fund] ? "Yes" : "<b>No</b>") + "</td><td class=\"num\">" + (r2 ? pct2(r2.actual, 2) : "—") + "</td><td>" + (r2 ? (r2.hit ? "<b class=\"pos\">" + tcQ(r2.q) + "</b>" : tcQ(r2.q)) : "<span class=\"muted\">n/a</span>") + "</td><td>" + (r2 ? (r2.hit ? "<b class=\"pos\">Hit</b>" : "Miss") : "") + "</td></tr>"; }).join("") + "</tbody></table></div></div>"; }
+    return h; }
+  // the workbook of the version with the flow: its weights beside the ones without, then the tab's pick sheets for it
+  function tcFlowExport(id) { var c = TC[id], btn = $(c.px + "FlowX"), o = c.o;
+    function build() { var wb = XLSX.utils.book_new(), Fb = c.fb.list[0].fit, Fa = c.fa.list[0].fit, NF = window.NETFLOW;
+      var wt = [["Variable", "Weight without the flow", "Weight with the flow", "Standard error with", "t with", "p with"]];
+      Fa.vars.forEach(function (v, i) { var k = Fb.vars.indexOf(v), t = Fa.fit.terms[i]; wt.push([v, k >= 0 ? Fb.fit.terms[k].coef : "", t.coef, t.se, t.t, t.p]); });
+      var it = Fa.fit.terms[Fa.vars.length]; wt.push(["Intercept", Fb.a, Fa.a, it ? it.se : "", it ? it.t : "", it ? it.p : ""], ["Fund-years", Fb.N, Fa.N], ["R2", Fb.fit.r2, Fa.fit.r2], ["Adjusted R2", Fb.fit.adjR2, Fa.fit.adjR2]);
+      var sheets = window.PeriodEngine.tqPickSheets(c.kf, null, c.fa, null, o);
+      sheets.forEach(function (sh) { if (sh[0] !== "Read_Me") return; sh[1] = sh[1].filter(function (r) { return r[0] !== "AR previous"; });
+        sh[1].splice(2, 0, ["Net flow", FLOW_VAR + ": the fund's net flow in calendar year E in Rs crore, from " + NF.source + " by ISIN, with the parameters of year E (it predicts the return of E+1). Only the fund-years with a flow are used. The parameters are the ones the selection steps choose on those fund-years; the flow is added to them. Sheet Weights puts the weights with and without the flow side by side."]); });
+      sheets.splice(1, 0, ["Weights", wt, [44, 22, 22, 18, 10, 10]]);
+      sheets.forEach(function (sh) { exNote(sh); var ws = XLSX.utils.aoa_to_sheet(sh[1]); ws["!cols"] = sh[2].map(function (w) { return { wch: w }; }); XLSX.utils.book_append_sheet(wb, ws, sh[0]); });
+      XLSX.writeFile(wb, "Top_Picks_" + (o.target === "absolute" ? "Absolute_" : "Excess_") + (o.combined ? "All_funds" : o.group.replace(/[^A-Za-z0-9]+/g, "_") + "_only") + "_with_net_flow_Q" + o.quarts.slice().sort().join("") + "_L" + o.from + "-" + o.to + "_T" + o.tFrom + "-" + o.tTo + exTag() + ".xlsx"); btn.disabled = false; btn.textContent = "Export with the flow"; }
+    if (window.XLSX) { build(); return; }
+    btn.disabled = true; btn.textContent = "Preparing…";
+    loadScript("vendor/xlsx.full.min.js", build, function () { btn.disabled = false; btn.textContent = "Export failed - retry"; }); }
   function tcCell(t, key, bold) { return t && t.picks ? xbtn(tcRatio(t, bold), key) : "—"; }
   function tcRatio(t, bold) { if (!t || !t.picks) return "—"; var v = zPct(t.hits, t.picks); return (bold ? "<b>" + v + "</b>" : v) + " <span class=\"muted\">" + t.hits + "/" + t.picks + "</span>"; }
   // the average score of a tally out of 100, with the random picks' score next to it
@@ -2652,6 +2713,7 @@
       K.years.map(function (t) { var a = KA.years.filter(function (z) { return z.year === t.year; })[0]; return "<tr><td>" + t.year + "</td><td class=\"num\">" + tcScore(t.picks, 1) + "</td><td class=\"num\">" + tcScore(a && a.picks, 1) + "</td><td class=\"num\">" + tcScore(t.basket, 1) + "</td><td class=\"num\">" + tcScore(a && a.basket, 1) + "</td></tr>"; }).join("") +
       "<tr><td><b>All years</b></td><td class=\"num\">" + tcScore(T, 1) + "</td><td class=\"num\">" + tcScore(KA.total, 1) + "</td><td class=\"num\">" + tcScore(B, 1) + "</td><td class=\"num\">" + tcScore(KA.basketTotal, 1) + "</td></tr>" +
       "<tr><td>Live, " + (LV ? esc(LV.label) : "") + "</td><td class=\"num\">" + tcScore(LV && LV.picks) + "</td><td class=\"num\">" + tcScore(LA && LA.picks) + "</td><td class=\"num\">" + tcScore(LV && LV.basket) + "</td><td class=\"num\">" + tcScore(LA && LA.basket) + "</td></tr></tbody></table></div></div>";
+    h += tcFlowCard(id);
     // by category
     var cats = Object.keys(K.cats).sort();
     h += "<div class=\"card\"><h2>By category</h2><p class=\"hint\">Picks per year: 3 when the category has " + o.big + "+ funds that year, otherwise 2. Basket funds: the model portfolio's funds in the category, added up over the test years. Scores: average points (" + tcPts() + "), with the random score after vs. Click a hit ratio for its funds, year by year.</p><div class=\"wide\"><table id=\"" + px + "ByCat\"><thead><tr><th>Category</th><th class=\"num\">Basket funds</th><th class=\"num\">" + tcPk(o, 1) + "</th><th class=\"num\">AR previous picks</th><th class=\"num\">Basket picks</th><th class=\"num\">Picks score</th><th class=\"num\">AR previous score</th><th class=\"num\">Basket score</th></tr></thead><tbody>" +
@@ -2673,6 +2735,7 @@
       $(px + "PT").innerHTML = "<thead><tr><th>Category</th><th>Fund</th><th>Last year</th><th class=\"num\">Predicted " + c.target + "</th><th class=\"num\">Predicted rank</th><th>In basket</th><th class=\"num\">" + (live ? "Live return" : "Actual excess") + "</th><th class=\"num\">Actual rank</th><th>Quartile</th><th>Result</th><th class=\"num\">Score</th></tr></thead><tbody>" +
         rows.map(function (p) { var r2 = live ? lv[p.fund] : p; return "<tr><td><span class=\"pill\">" + esc(short(p.cat)) + "</span></td><td>" + (inB[p.fund] ? "<b>" + esc(p.fund) + "</b>" : esc(p.fund)) + "</td><td>" + (p.lastQ ? tcQ(p.lastQ) : "<span class=\"muted\">—</span>") + "</td><td class=\"num\">" + pct2(p.score, 2) + "</td><td class=\"num\">" + p.rank + " of " + p.n + "</td><td>" + (inB[p.fund] ? "<b>Yes</b>" : "<span class=\"muted\">no</span>") + "</td><td class=\"num\">" + (r2 ? pct2(r2.actual, 2) : "—") + "</td><td class=\"num\">" + (r2 ? r2.actualRank + " of " + r2.n : "—") + "</td><td>" + (r2 ? (r2.hit ? "<b class=\"pos\">" + tcQ(r2.q) + "</b>" : tcQ(r2.q)) : "<span class=\"muted\">n/a</span>") + "</td><td>" + (r2 ? (r2.hit ? "<b class=\"pos\">Hit</b>" : "Miss") : "") + "</td><td class=\"num\">" + (r2 ? r2.pts : "") + "</td></tr>"; }).join("") + "</tbody>"; }
     $(px + "PY").addEventListener("change", picks); $(px + "PS").addEventListener("change", picks); picks();
+    if ($(px + "FlowX")) $(px + "FlowX").addEventListener("click", function () { tcFlowExport(id); });
     wireExplain($(px + "ByCat"), function (key, done) { var kind = key.charAt(0), cat = cats[+key.slice(2)], list = (kind === "a" ? KA.picks : kind === "b" ? K.basket : K.picks).filter(function (p) { return p.cat === cat; }), what = kind === "a" ? "AR previous parameters' " + tcPk(o) : kind === "b" ? "basket picks" : tcPk(o);
       var ys = Object.keys(list.reduce(function (a, p) { a[p.year] = 1; return a; }, {})).sort();
       done("<h3>" + esc(short(cat)) + " · " + what + ", year by year</h3><p class=\"muted\">" + list.filter(function (p) { return p.hit; }).length + " of " + list.length + " finished in the " + qn + " of the category. Average score " + f2(list.reduce(function (a, p) { return a + p.pts; }, 0) / list.length, 1) + " (" + tcPts() + ").</p><table><thead><tr><th>Return year</th><th>Fund</th><th class=\"num\">Predicted rank</th><th class=\"num\">Actual excess</th><th class=\"num\">Actual rank</th><th>Quartile</th><th>Result</th><th class=\"num\">Score</th></tr></thead><tbody>" +
@@ -2682,7 +2745,7 @@
     $(px + "Sum").addEventListener("click", function (ev) { var tr = ev.target.closest("tr[data-i]"); if (!tr) return; if ($(px + "Cat")) $(px + "Cat").value = tr.getAttribute("data-i"); tcDetail(id, +tr.getAttribute("data-i")); $(px + "Det").scrollIntoView({ behavior: "smooth", block: "start" }); });
     if (R.list.length > 1) { $(px + "Cat").addEventListener("change", function () { tcDetail(id, +this.value); }); $(px + "Cat").value = first; }
     tcDetail(id, first); }
-  function tcLine(F, tg) { return "<div class=\"pequation\"><span class=\"peterm\">y =</span> " + F.b.map(function (w, j) { return "<span class=\"peterm\">" + (w < 0 ? (j ? "− " : "−") : (j ? "+ " : "")) + rgNum(Math.abs(w), 4) + "x<sub>" + (j + 1) + "</sub></span>"; }).join(" ") + " <span class=\"peterm\">" + (F.a < 0 ? "− " : "+ ") + rgNum(Math.abs(F.a), 4) + "</span></div>" +
+  function tcLine(F, tg, fmt) { var n = fmt || function (v) { return rgNum(v, 4); }; return "<div class=\"pequation\"><span class=\"peterm\">y =</span> " + F.b.map(function (w, j) { return "<span class=\"peterm\">" + (w < 0 ? (j ? "− " : "−") : (j ? "+ " : "")) + n(Math.abs(w)) + "x<sub>" + (j + 1) + "</sub></span>"; }).join(" ") + " <span class=\"peterm\">" + (F.a < 0 ? "− " : "+ ") + n(Math.abs(F.a)) + "</span></div>" +
       "<div class=\"pelegend\"><div><b>y</b> = " + tcY(tg) + "</div>" + F.vars.map(function (v, j) { return "<div><b>x<sub>" + (j + 1) + "</sub></b> = " + esc(zName(v)) + "</div>"; }).join("") + "</div>"; }
   function tcDetail(id, i) { var c = TC[id], px = c.px, R = c.res, x = R.list[i], o = x.o, box = $(px + "Det"), K = x.pick, F = x.fit, name = tcLab(x.cat), all = x.cat === window.PeriodEngine.ALL, tg = c.target;
     var st = {}; K.kept.forEach(function (k) { st[k.name] = F ? "<b class=\"pos\">In the model</b>" : "Kept"; }); K.dropped.forEach(function (d) { st[d.name] = "Dropped: " + f2(d.rho, 2) + " with " + esc(zName(d.other)); }); K.thin.forEach(function (d) { st[d.name] = "Too little data (" + Math.round(100 * d.n / x.train) + "%)"; });

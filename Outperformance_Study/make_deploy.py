@@ -15,6 +15,7 @@ HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "dashboard"
 OUT = HERE / (sys.argv[1] if len(sys.argv) > 1 else "deploy")
 KEEP = {".vercel", ".env.local", ".gitignore"}   # the Vercel project link stays
+SKIP = {"flows", "3y"}                            # local research copies of the panel, not loaded by the page
 
 
 def main():
@@ -23,12 +24,14 @@ def main():
         if item.name not in KEEP:
             shutil.rmtree(item) if item.is_dir() else item.unlink()
     for item in SOURCE.iterdir():
+        if item.name in SKIP:
+            continue
         target = OUT / item.name
         shutil.copytree(item, target) if item.is_dir() else shutil.copy(item, target)
     # Version every data file the page loads by its content, so a browser never mixes
     # a new page with a cached old file.
     html = (OUT / "index.html").read_text()
-    for name in ("data.js", "funds.js", "category.js", "prediction.js", "previous.js", "period.js", "latest.js", "armp.js", "amc.js", "isin.js", "flows.js", "mpbasket.js", "ex/data.js", "ex/prediction.js", "ex/previous.js", "sec/data.js", "sec/prediction.js", "sec/previous.js", "exsec/data.js", "exsec/prediction.js", "exsec/previous.js", "research.js", "markov.js", "top3.js", "panel.js",
+    for name in ("data.js", "funds.js", "category.js", "prediction.js", "previous.js", "period.js", "latest.js", "armp.js", "amc.js", "isin.js", "flows.js", "netflow.js", "mpbasket.js", "ex/data.js", "ex/prediction.js", "ex/previous.js", "sec/data.js", "sec/prediction.js", "sec/previous.js", "exsec/data.js", "exsec/prediction.js", "exsec/previous.js", "research.js", "markov.js", "top3.js", "panel.js",
                  "vendor/xlsx.full.min.js"):
         tag = hashlib.md5((OUT / name).read_bytes()).hexdigest()[:10]
         for quote in ('"',):
