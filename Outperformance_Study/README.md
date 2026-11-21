@@ -216,7 +216,7 @@ The Linear regression tab predicts next-year excess by applying a multiple regre
 
 Period test can require a minimum share of analysis and testing years with data for each parameter.
 
-The Linear regression tab can compare custom periods and list the parameters significant in all of them. Once periods are added, the prediction's multiple regression uses the common parameters with one direction. The Multiple regression section shows the line equation and how it's built from each parameter's individual line.
+The Linear regression tab can compare custom periods and list the parameters significant in all of them. Once periods are added, the prediction's multiple regression uses the common parameters with one direction. The line equation sits at the top of the tab, with what each x is and the fit (R², adjusted); the Multiple regression section shows how it's built from each parameter's individual line.
 
 The Regression test tab builds a line on one chosen period from chosen parameters, shows its derivation, and tests it on another period.
 
